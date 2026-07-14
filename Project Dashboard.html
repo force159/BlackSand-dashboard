@@ -1,0 +1,2993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blacksand — Leasing Dashboard</title>
+  <meta name="description" content="Blacksand real estate leasing dashboard — executive reporting for office displays." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <!-- Three.js r0.170 (ESM build — the UMD three.min.js no longer ships in this version).
+       Exposed on window so the existing classic init script can use THREE unchanged. -->
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js';
+    window.THREE = THREE;
+    window.dispatchEvent(new Event('three-ready'));
+  </script>
+  <style>
+    /* ── Reset & Base ───────────────────────────────────── */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      /* Blacksand brand palette — charcoal / graphite neutrals + a restrained, muted
+         PURPLE accent, derived from the official identity (logo grey→purple, Pantone
+         265 C). Deliberately warm-neutral, NOT blue: every dark has R≥B and the greys
+         carry a faint purple undertone, so the interface reads as graphite with a
+         premium purple accent rather than a cool blue dashboard. Teal (317 C) has
+         been retired as the working highlight — purple now leads. */
+      --bg:        #0d0c10;   /* Charcoal — primary background (neutral, faint purple) */
+      --surface:   #17151b;   /* Graphite card / panel surface */
+      --surface-h: #1e1c24;   /* Hover surface */
+      --border:    #2b2833;   /* Graphite border / grid line */
+      --hairline:  #201e27;   /* Internal section separator */
+
+      --accent:    #8764AB;   /* Brand purple — Pantone 265 C — the PRIMARY accent */
+      --accent-hi: #b9a6d9;   /* Light muted lilac — the single data-highlight ink */
+      --accent-lo: rgba(135, 100, 171, 0.08);  /* faint purple wash */
+      --accent-md: rgba(135, 100, 171, 0.28);  /* purple border tint */
+
+      --grey:      #7C868E;   /* Pantone 430 C (neutral) */
+      --grey-lo:   #B2B5B9;   /* Pantone 4274 C */
+      --coral:     #EA6753;   /* Pantone 7416 C — semantic negative / vacancy only */
+
+      --white:     #FFFFFF;
+      --white-70:  #d8d6dc;   /* Light neutral grey (warm-neutral, not slate) */
+      --white-50:  #9a969f;   /* Mid neutral grey text */
+      --white-30:  #6f6b75;   /* Muted neutral label */
+
+      --radius:    0.5rem;       /* Sharper corporate borders */
+      --radius-sm: 0.375rem;
+    }
+
+    html, body {
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      background:
+        radial-gradient(120% 80% at 50% -10%, #17141c 0%, #0d0c10 60%),
+        var(--bg);
+      color: var(--white);
+      font-family: 'Hanken Grotesk', Arial, system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
+    }
+    /* Centre the fixed-size dashboard; it is scaled to fit any 16:9 display. */
+    body { display: flex; align-items: center; justify-content: center; }
+
+    /* ══════════════════════════════════════════════════════
+       BLACKSAND PARTICLE-WAVE BACKGROUND
+       A single fixed Three.js Points surface behind EVERYTHING (z-index 0; the
+       dashboard is z-index 1). ~28k GPU-displaced points form one continuous
+       undulating grid — muted-purple beads on a deep charcoal ground, in perspective
+       — matching the reference. The dark ground lives in CSS (`.wave-background`
+       background), so it is also the graceful fallback if WebGL fails; the canvas
+       clears transparent and draws only the points on top. A `.wave-veil` darkens
+       the top (header/tabs) and bottom (footer) bands + the outer edges so text that
+       sits directly on the background stays readable, while the mid-field and the
+       area around the occupancy model stay open so the wave reads clearly. The whole
+       layer is non-interactive and excluded from layout. */
+    .wave-background {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+      /* Deep charcoal ground + a faint asymmetric purple glow. This is the base the
+         points sit on, and the static fallback if the WebGL canvas never renders. */
+      background:
+        radial-gradient(58% 50% at 22% 14%, rgba(135, 100, 171, 0.16) 0%, transparent 60%),
+        radial-gradient(50% 55% at 88% 92%, rgba(110, 80, 148, 0.10) 0%, transparent 58%),
+        linear-gradient(160deg, #131019 0%, #0c0a10 55%, #09080c 100%);
+    }
+    #waveBackgroundCanvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    /* Readability veil — sits above the canvas but below the dashboard. Darkens only
+       the top + bottom bands (where the header, tabs and footer text sit directly over
+       the wave) and the outer edges; the centre stays open so the wave shows around
+       the occupancy model. Static, non-interactive. */
+    .wave-veil {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(180deg,
+          rgba(9, 8, 12, 0.62) 0%, rgba(9, 8, 12, 0.28) 12%,
+          transparent 26%, transparent 76%,
+          rgba(9, 8, 12, 0.34) 90%, rgba(9, 8, 12, 0.60) 100%),
+        radial-gradient(135% 120% at 50% 46%, transparent 44%, rgba(9, 8, 12, 0.45) 100%);
+    }
+
+    /* ── Dashboard Shell ───────────────────────────────────
+       Authored at a fixed 1920×1080 canvas and uniformly scaled by JS
+       (--fit) so 1080p, 1440p and 4K TVs all show the exact same balanced
+       composition — just larger and crisper. No reflow, no voids at 4K. */
+    .dashboard {
+      width: 120rem;
+      height: 67.5rem;
+      flex: 0 0 auto;
+      position: relative;
+      z-index: 1;             /* sits above the wave background (z-index 0) */
+      /* No transform scaling — the design is sized in rem and scaled via the root
+         font-size (see fitDashboard) so text renders natively/crisply at every fit. */
+      display: grid;
+      grid-template-rows: auto auto 1fr auto; /* header, project tabs, main, address bar */
+      padding: 1.5rem 2rem 1.125rem;
+      gap: 1rem;
+    }
+
+    /* ── Header ────────────────────────────────────────── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.5rem;
+      padding-bottom: 1.125rem;
+      border-bottom: 0.0625rem solid var(--hairline);
+    }
+
+    .header-left {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.3125rem;
+    }
+
+    /* ── Official BlackSand lockup (flat SVG) ─────────────────
+       The uploaded page-3.svg (framed to its content) rendered directly as a crisp,
+       flat vector — no Three.js, no extrusion/glow/shadow/motion. It already contains
+       the wordmark, so there is no separate brand text. ~20–30% larger than the old
+       lockup because it is now the full wordmark. Left-aligned; the header flexbox
+       vertically centres it. */
+    .brand-logo-wrap {
+      margin: 0;
+      line-height: 0;      /* no extra text-box height around the image */
+      flex-shrink: 0;
+    }
+    .brand-logo {
+      display: block;
+      height: 4.375rem;    /* 70px at the 1920×1080 reference (was 56px) */
+      width: auto;         /* preserve the SVG's exact aspect ratio */
+    }
+
+    .project-name {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      color: var(--accent-hi);
+      letter-spacing: 0.125rem;
+      text-transform: uppercase;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      flex-shrink: 0;
+    }
+
+    .header-clock {
+      text-align: right;
+    }
+
+    .header-clock .date {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--white-50);
+    }
+
+    .header-clock .time {
+      font-size: 1.75rem;
+      font-weight: 500;
+      letter-spacing: -0.03125rem;
+      line-height: 1.15;
+      color: var(--white);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .header-updated {
+      text-align: right;
+    }
+
+    .header-updated .label {
+      font-size: 0.625rem;
+      font-weight: 600;
+      color: var(--white-30);
+      text-transform: uppercase;
+      letter-spacing: 0.0625rem;
+    }
+
+    .header-updated .value {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--accent-hi);
+      margin-top: 0.125rem;
+    }
+
+    .divider-v {
+      width: 0.0625rem;
+      height: 2rem;
+      background: var(--border);
+    }
+
+    /* ── Main Grid (V2 — "Central Spine") ──────────────────
+       A symmetric frame around the 3D occupancy centrepiece:
+         · top corners  → Retail / Offices asset cards
+         · centre spine → 3D occupancy hero + Portfolio Statistics
+         · left rail    → leasing performance (velocity + trend ribbon)
+         · right rail   → charts that support the occupancy model
+         · bottom band  → Top Tenants + Tenant Directory (operational)   */
+    .main {
+      display: grid;
+      grid-template-columns: minmax(15rem, 1fr) minmax(0, 1.7fr) minmax(16.25rem, 1fr);
+      grid-template-rows: auto minmax(0, 1.35fr) minmax(0, 1fr);
+      grid-template-areas:
+        "retail   stage   offices"
+        "leftrail stage   rightrail"
+        "tenants  tenants directory";
+      gap: 0.75rem 1rem;
+      min-height: 0;
+      /* Heavier, more premium cross-fade on project switch — smoother, not faster. */
+      transition: opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .main.is-switching { opacity: 0; }
+
+    /* ── Asset cards (Retail / Offices) — the primary category KPIs ── */
+    .asset-card {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .asset-card .gla { font-size: 1.625rem; }
+
+    /* ── Centre stage: 3D occupancy hero + Portfolio Statistics ── */
+    .stage {
+      grid-area: stage;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      min-height: 0;
+    }
+    .occupancy-stage {
+      position: relative;
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    /* The canvas DISPLAY size is owned entirely by CSS (fills the stage), so it is
+       independent of the WebGL drawing-buffer dimensions. This is what keeps the
+       model's on-screen size identical across every load/refresh — the renderer only
+       controls buffer resolution, never the displayed size. */
+    .occupancy-stage .occupancy-canvas {
+      display: block;
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      max-width: 100%;
+      max-height: 100%;
+      z-index: 2;
+    }
+    /* Centre label — crisp HTML overlay, always the readable focal number */
+    .stage-label {
+      position: absolute;
+      top: 43.5%;                 /* raised with the model (~0.75rem lift) so the % stays centred in the ring */
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      pointer-events: none;
+      z-index: 3;
+    }
+    .stage-label .pct {
+      font-size: 3.75rem;
+      font-weight: 600;
+      letter-spacing: -0.09375rem;
+      line-height: 1;
+      color: var(--accent-hi);
+      font-variant-numeric: tabular-nums;
+    }
+    .stage-label .sub {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--white-50);
+      text-transform: uppercase;
+      letter-spacing: 0.25rem;
+      margin-top: 0.625rem;
+      padding-left: 0.25rem; /* balance the tracking */
+    }
+    /* CSS conic-gradient ring — graceful fallback if WebGL/Three is unavailable */
+    .stage-fallback {
+      position: absolute;
+      top: 43.5%;                 /* kept concentric with the raised label */
+      left: 50%;
+      width: 14.375rem;
+      height: 14.375rem;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: conic-gradient(var(--accent-hi) 0turn var(--leased-turn, 0.5turn),
+                                 #2b2833 var(--leased-turn, 0.5turn) 1turn);
+      -webkit-mask: radial-gradient(circle, transparent 58%, #000 59%);
+      mask: radial-gradient(circle, transparent 58%, #000 59%);
+      opacity: 0.9;
+      z-index: 1;
+    }
+    .occupancy-stage.has-3d .stage-fallback { display: none; }
+
+    /* ── Portfolio Statistics ribbon ───────────────────────
+       A shallow architectural platform that reads as the display base mounted beneath
+       the 3D occupancy model — one coherent panel, not four cards. Depth now comes ONLY
+       from the CSS extrusion layer (::before) + directional shadow + inset edge lighting
+       — the former `perspective(56.25rem) rotateX(3deg)` was REMOVED because rotating this
+       container softened the numbers inside it. The upward lift is a transform-free
+       layout offset (`top`), so the text is never rasterized onto a tilted/compositor
+       layer. No glass, no glow, no motion. */
+    .portfolio-stats {
+      position: relative;
+      top: -0.625rem;                 /* lift toward the model base — layout offset, NOT a transform → text stays crisp */
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      flex: 0 0 auto;
+      background:
+        linear-gradient(180deg,
+          rgba(255, 255, 255, 0.035) 0%,
+          rgba(255, 255, 255, 0.012) 30%,
+          rgba(0, 0, 0, 0.045) 100%),
+        var(--surface);
+      border: 0.0625rem solid rgba(124, 134, 142, 0.22);
+      border-radius: var(--radius);
+      /* Richer upper-edge studio light + thicker dark lower edge + a deeper directional
+         shadow → a more dimensional plinth, better anchored beneath the model. */
+      box-shadow:
+        inset 0 0.09375rem 0 rgba(255, 255, 255, 0.07),
+        inset 0 -0.09375rem 0 rgba(0, 0, 0, 0.38),
+        0 0.6875rem 1.5rem rgba(0, 0, 0, 0.34),
+        0 0.1875rem 0.375rem rgba(0, 0, 0, 0.42);
+      transition: box-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    /* Physical thickness — a darker extrusion layer sitting ~0.375rem beneath and behind the
+       surface. Reads as a deeper panel edge, never a duplicated second card. */
+    .portfolio-stats::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      transform: translateY(0.375rem);
+      background: #080c12;
+      border: 0.0625rem solid rgba(0, 0, 0, 0.45);
+      border-radius: inherit;
+    }
+    /* Restrained TV-safe hover: firm the top light + a touch more shadow. No motion. */
+    .portfolio-stats:hover {
+      box-shadow:
+        inset 0 0.0625rem 0 rgba(255, 255, 255, 0.075),
+        inset 0 -0.0625rem 0 rgba(0, 0, 0, 0.30),
+        0 0.5625rem 1.25rem rgba(0, 0, 0, 0.26),
+        0 0.125rem 0.25rem rgba(0, 0, 0, 0.34);
+    }
+    /* Cells stay flat within the shared platform — the ribbon gradient shows through. */
+    .pstat {
+      position: relative;
+      background: transparent;
+      padding: 0.75rem 0.875rem;
+      text-align: center;
+    }
+    /* Internal separators — a hairline that darkens toward the bottom to match depth. */
+    .pstat + .pstat {
+      border-left: 0.0625rem solid;
+      border-image: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.42)) 1;
+    }
+    .pstat-value {
+      font-size: 1.3125rem;
+      font-weight: 600;
+      letter-spacing: -0.03125rem;
+      line-height: 1.1;
+      color: var(--white);
+      font-variant-numeric: tabular-nums;
+    }
+    .pstat-label {
+      font-size: 0.5625rem;
+      font-weight: 600;
+      color: var(--white-30);
+      text-transform: uppercase;
+      letter-spacing: 0.0625rem;
+      margin-top: 0.375rem;
+    }
+
+    /* Shared small unit glyph (m² / %) — inherits parent size via em */
+    .kpi-unit { font-size: 0.6em; font-weight: 500; color: var(--white-30); }
+
+    /* ── Rails (leasing performance / supporting charts) ── */
+    .rail {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      min-height: 0;
+      overflow: hidden;
+    }
+    /* Combined Leasing Velocity panel — one compact card, three rows */
+    .left-rail .velocity-card { flex: 0 0 auto; }
+    .velocity-panel { display: flex; flex-direction: column; }
+    .vel-panel-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+    .vel-panel-title {
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.0625rem;
+      color: var(--white-50);
+    }
+    .vel-panel-sub { font-size: 0.5625rem; font-weight: 500; color: var(--white-30); }
+    .vel-line {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding: 0.4375rem 0;
+      border-top: 0.0625rem solid var(--hairline);
+    }
+    .vel-line:first-of-type { border-top: none; }
+    .vel-line-label { font-size: 0.75rem; font-weight: 500; color: var(--white-50); }
+    .vel-line-val {
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--white);
+      letter-spacing: -0.01875rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .vel-line.is-overall .vel-line-val { color: var(--accent-hi); }
+    /* Trend ribbon reads as a compact vertical list; it fills the rail's remainder */
+    .left-rail .perf-summary {
+      grid-template-columns: 1fr;
+      padding: 0.125rem 0;
+      flex: 1 1 auto;
+      align-content: center;
+    }
+    .left-rail .perf-item { padding: 0.5rem 0.875rem; }
+    .left-rail .perf-item + .perf-item {
+      border-left: none;
+      border-top: 0.0625rem solid var(--hairline);
+    }
+    .left-rail .perf-title { margin-bottom: 0.1875rem; }
+    .left-rail .perf-value { font-size: 1.1875rem; }
+    .left-rail .perf-period { margin-top: 0.1875rem; }
+    /* Charts fill the right rail and share its height evenly */
+    .right-rail .leased-area-card,
+    .right-rail .type-breakdown-card {
+      flex: 1 1 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .right-rail .leased-area-body,
+    .right-rail .type-breakdown-body {
+      flex: 1 1 auto;
+      height: auto;
+      min-height: 0;
+    }
+
+    /* ── Card (shared depth language) ──────────────────────
+       Thin matte panels lifted ~2–0.1875rem off the background. Depth comes ONLY from a
+       faint vertical surface gradient, an inset top-edge highlight (light from above),
+       a darker inset lower edge, a clean border, and a soft directional drop shadow.
+       No glass, no glow, no coloured shadow, no tilt, no motion. Two elevation tiers:
+       PRIMARY = base .card (Retail / Offices / Tenant Directory);
+       SECONDARY = analytics panels below (lighter, so they don't rival the centrepiece).
+       Depth hierarchy overall: 3D occupancy model > Portfolio Statistics plinth >
+       these cards > flat chart/table contents. */
+    .card {
+      position: relative;
+      background:
+        linear-gradient(180deg,
+          rgba(255, 255, 255, 0.045) 0%,
+          rgba(255, 255, 255, 0.012) 30%,
+          rgba(0, 0, 0, 0.06) 100%),
+        var(--surface);
+      border: 0.0625rem solid rgba(124, 134, 142, 0.22);
+      border-radius: var(--radius);
+      /* Heavier, more premium easing — smoother, never faster. */
+      transition: border-color 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+                  box-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+      /* Precision-machined panel: crisper top-edge light, thicker dark lower edge,
+         and a deeper, better-defined drop shadow (~40% more presence). */
+      box-shadow:
+        inset 0 0.0625rem 0 rgba(255, 255, 255, 0.055),
+        inset 0 -0.09375rem 0 rgba(0, 0, 0, 0.36),
+        0 0.5625rem 1.375rem rgba(0, 0, 0, 0.30),
+        0 0.125rem 0.3125rem rgba(0, 0, 0, 0.42);
+    }
+
+    /* Restrained hover (TV-safe): clearer border + a touch more shadow + faint top
+       light. No translate, scale, tilt, or glow. */
+    .card:hover {
+      border-color: rgba(178, 181, 185, 0.32);
+      box-shadow:
+        inset 0 0.0625rem 0 rgba(255, 255, 255, 0.07),
+        inset 0 -0.09375rem 0 rgba(0, 0, 0, 0.38),
+        0 0.75rem 1.75rem rgba(0, 0, 0, 0.34),
+        0 0.1875rem 0.375rem rgba(0, 0, 0, 0.44);
+    }
+
+    /* Secondary cards — same language, lighter elevation so the analytics panels stay
+       clearly subordinate to the asset cards, directory, and central model. */
+    .velocity-card,
+    .perf-summary,
+    .leased-area-card,
+    .type-breakdown-card,
+    .building-occupancy-card {
+      box-shadow:
+        inset 0 0.0625rem 0 rgba(255, 255, 255, 0.04),
+        inset 0 -0.0625rem 0 rgba(0, 0, 0, 0.30),
+        0 0.3125rem 0.875rem rgba(0, 0, 0, 0.24),
+        0 0.0625rem 0.1875rem rgba(0, 0, 0, 0.36);
+    }
+    .velocity-card:hover,
+    .perf-summary:hover,
+    .leased-area-card:hover,
+    .type-breakdown-card:hover,
+    .building-occupancy-card:hover {
+      box-shadow:
+        inset 0 0.0625rem 0 rgba(255, 255, 255, 0.055),
+        inset 0 -0.0625rem 0 rgba(0, 0, 0, 0.32),
+        0 0.5rem 1.25rem rgba(0, 0, 0, 0.28),
+        0 0.125rem 0.25rem rgba(0, 0, 0, 0.38);
+    }
+
+    .card-header {
+      padding: 1.125rem 1.375rem 0.875rem;
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      border-bottom: 0.0625rem solid var(--hairline);
+    }
+
+    /* Precise thin-ruled tile (not a filled grey blob) — reads as an engineered,
+       architectural marker in the BlackSand editorial language, from the same
+       virtual light as the cards (hairline = the internal separator ink). */
+    .card-header .icon {
+      width: 1.875rem;
+      height: 1.875rem;
+      border-radius: 0.375rem;
+      background: transparent;
+      border: 0.0625rem solid var(--hairline);
+      color: var(--white-50);
+      display: grid;
+      place-items: center;
+      font-size: 0.9375rem;
+      flex-shrink: 0;
+    }
+
+    .card-header h2 {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.0625rem;
+      text-transform: uppercase;
+      color: var(--white-70);
+    }
+
+    .card-body {
+      padding: 1rem 1.375rem 1.25rem;
+    }
+
+    /* ── Property / Asset cards (Retail & Offices) ─────── */
+    .prop-card {
+      padding: 0.875rem 1rem;
+    }
+
+    /* Editorial tracked label (not a filled chip) — the brand labels sections
+       with clean uppercase tracking, never UI "tags". */
+    .prop-card .type-badge {
+      display: inline-block;
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.0875rem;
+      color: var(--white-50);
+      margin-bottom: 0.625rem;
+    }
+
+    .prop-card .gla {
+      font-size: 1.375rem;
+      font-weight: 600;
+      letter-spacing: -0.03125rem;
+      line-height: 1.1;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .prop-card .gla-label {
+      font-size: 0.6875rem;
+      font-weight: 500;
+      color: var(--white-30);
+      margin-top: 0.125rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .prop-card .leased-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.375rem;
+    }
+
+    .prop-card .leased-pct {
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--white);
+    }
+
+    .prop-card .leased-label {
+      font-size: 0.6875rem;
+      font-weight: 500;
+      color: var(--white-30);
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 0.25rem;
+      background: #211f28;
+      border-radius: 0.125rem;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      border-radius: 0.125rem;
+      background: var(--accent-hi);
+      transition: width 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    /* ── Leasing Velocity (executive stats) ────────────── */
+    .velocity-card { padding: 0.875rem 1rem; }
+    .velocity-card .vel-label {
+      font-size: 0.5625rem;
+      font-weight: 600;
+      color: var(--white-30);
+      text-transform: uppercase;
+      letter-spacing: 0.0625rem;
+      margin-bottom: 0.375rem;
+    }
+    .velocity-card .vel-value {
+      font-size: 1.1875rem;
+      font-weight: 600;
+      letter-spacing: -0.03125rem;
+      line-height: 1.1;
+      color: var(--white);
+      font-variant-numeric: tabular-nums;
+    }
+    .velocity-card .vel-sub {
+      font-size: 0.5625rem;
+      font-weight: 500;
+      color: var(--white-30);
+      margin-top: 0.25rem;
+    }
+    /* Summary metric accented in teal (matching "Overall Leased") — the single
+       data-highlight colour. Purple stays reserved for the brand logo/diamond. */
+    .velocity-card.is-overall .vel-value { color: var(--accent-hi); }
+
+    /* ── Performance Summary ribbon (trend indicators) ── */
+    .perf-summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      align-items: center;
+      padding: 0.75rem 0.5rem;
+    }
+    .perf-item { padding: 0 1.5rem; }
+    .perf-item + .perf-item { border-left: 0.0625rem solid var(--hairline); }
+    .perf-title {
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.0625rem;
+      color: var(--white-30);
+      margin-bottom: 0.3125rem;
+    }
+    .perf-valrow { display: flex; align-items: center; gap: 0.4375rem; line-height: 1; }
+    .perf-arrow { display: inline-flex; flex-shrink: 0; }
+    .perf-value {
+      font-size: 1.375rem;
+      font-weight: 600;
+      letter-spacing: -0.03125rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .perf-period {
+      font-size: 0.625rem;
+      font-weight: 500;
+      color: var(--white-30);
+      margin-top: 0.3125rem;
+    }
+    /* Sign-based colouring — no new colours introduced */
+    .perf-up      { color: var(--accent-hi); }  /* positive → teal */
+    .perf-down    { color: var(--coral); }       /* negative → coral */
+    .perf-neutral { color: var(--white-50); }    /* flat → muted grey */
+
+    /* ── Leased Area by Category (mini bar chart panel) ── */
+    .leased-area-card { flex: 0 0 auto; }
+    .leased-area-body { padding: 0.75rem 1.125rem 0.875rem; height: 9.375rem; }
+    .leased-area-body canvas { width: 100% !important; height: 100% !important; }
+
+    /* ── Occupancy Breakdown by tenant type (mini bar chart) ── */
+    .type-breakdown-card { flex: 0 0 auto; }
+    .type-breakdown-body { padding: 0.75rem 1.125rem 0.875rem; height: 9.375rem; }
+    .type-breakdown-body canvas { width: 100% !important; height: 100% !important; }
+
+    /* ── Right Column: Tenant Directory ────────────────── */
+    .right-col {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .tenant-card {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .tenant-card .card-body {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 0.625rem 1.375rem 1rem;
+      scroll-behavior: smooth;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    .tenant-section-label {
+      font-size: 0.625rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.0625rem;
+      color: var(--white-30);
+      padding: 0.75rem 0 0.375rem;
+      border-bottom: 0.0625rem solid var(--hairline);
+    }
+
+    .tenant-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 0.5rem;
+    }
+
+    .tenant-table thead th {
+      font-size: 0.625rem;
+      font-weight: 600;
+      color: var(--white-30);
+      text-transform: uppercase;
+      letter-spacing: 0.0625rem;
+      text-align: left;
+      padding: 0.5rem 0.625rem;
+      border-bottom: 0.0625rem solid var(--hairline);
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: var(--surface);
+    }
+
+    .tenant-table thead th:last-child {
+      text-align: right;
+    }
+
+    .tenant-table tbody tr {
+      border-bottom: 0.0625rem solid rgba(255, 255, 255, 0.02);
+      transition: background 0.25s ease;
+    }
+
+    .tenant-table tbody tr:last-child {
+      border-bottom: none;
+    }
+
+    .tenant-table tbody tr:hover {
+      background: rgba(135, 100, 171, 0.05);
+    }
+
+    .tenant-table tbody td {
+      font-size: 0.8125rem;
+      font-weight: 500;
+      padding: 0.5rem 0.625rem;
+      color: var(--white-70);
+    }
+
+    .tenant-table tbody td:last-child {
+      text-align: right;
+      font-weight: 600;
+      color: var(--white);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Flat hairline tag — keeps the Type column scannable without the filled
+       "chip" look; softer hairline border, no fill. */
+    .tenant-table tbody td .type-pill {
+      display: inline-block;
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03125rem;
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+      border: 0.0625rem solid var(--hairline);
+      background: transparent;
+      color: var(--white-50);
+    }
+
+    /* ── Bottom Bar (Address) ──────────────────────────── */
+    .bottom-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      padding: 0.375rem 0 0;
+    }
+
+    .bottom-bar .address-icon {
+      font-size: 0.875rem;
+      color: var(--accent-hi);
+    }
+
+    .bottom-bar .address-text {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--white-30);
+      letter-spacing: 0.01875rem;
+    }
+
+    /* ── Animations ────────────────────────────────────── */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(0.5rem); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .animate-in {
+      animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      opacity: 0;
+    }
+
+    .delay-1 { animation-delay: 0.05s; }
+    .delay-2 { animation-delay: 0.10s; }
+    .delay-3 { animation-delay: 0.15s; }
+    .delay-4 { animation-delay: 0.20s; }
+    .delay-5 { animation-delay: 0.25s; }
+
+    /* ══════════════════════════════════════════════════════
+       PANEL FLOAT (restored) — each OUTER text panel drifts slowly as ONE RIGID
+       OBJECT. Everything inside (numbers, labels, charts, icons, rows, search) rides
+       along because the whole container moves; nothing inside animates on its own.
+       The motion is the independent `translate` property, so it COMPOSES with the
+       one-shot fadeInUp entrance (different property) and never rotates/scales text —
+       no wrappers or perspective needed. Amplitudes are in `rem` so the drift scales
+       with the rem-native design exactly as it did before the sharpness fix; the
+       durations / negative delays / phase offsets are the original staggered values.
+       Crucially there is NO whole-dashboard transform scale (sizing is native rem via
+       the root font-size) — so text renders crisply; only the local panel translates.
+       GPU-composited (will-change), paused when the tab is hidden, disabled under
+       reduced-motion. The 3D occupancy hero keeps its own JS animation on top. */
+    @keyframes panelFloat {
+      0%, 100% { translate: 0 0; }
+      50%      { translate: var(--fx, 0) var(--fy, -0.3125rem); }
+    }
+    .pf-retail, .pf-offices, .pf-occ, .pf-stats, .pf-velocity, .pf-perf,
+    .pf-breakdown, .pf-leased, .pf-directory, .pf-tenants, .pf-buildings {
+      will-change: transform;
+    }
+    /* Retail / Offices / Top Tenants / Buildings also run the one-shot fadeInUp
+       entrance, declared together with the float (transform vs translate → no clash). */
+    .pf-retail {
+      --fy: -0.3125rem; --fx: 0;
+      animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.05s forwards,
+                 panelFloat 3.75s ease-in-out infinite;
+    }
+    .pf-offices {
+      --fy: -0.375rem; --fx: 0.0625rem;
+      animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.05s forwards,
+                 panelFloat 4.5s ease-in-out -1s infinite;
+    }
+    .pf-tenants {
+      --fy: -0.25rem; --fx: 0;
+      animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.20s forwards,
+                 panelFloat 4.6s ease-in-out -1.4s infinite;
+    }
+    .pf-buildings {
+      --fy: -0.25rem; --fx: 0;
+      animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.25s forwards,
+                 panelFloat 4.9s ease-in-out -2.3s infinite;
+    }
+    /* The remaining panels appear via their wrapper's entrance, so the float is their
+       only animation (original staggered durations + negative delays). */
+    .pf-occ       { --fy: -0.25rem;    --fx: 0;          animation: panelFloat 5.25s ease-in-out -1.5s  infinite; }
+    .pf-stats     { --fy: -0.25rem;    --fx: 0;          animation: panelFloat 4.25s ease-in-out -0.75s infinite; }
+    .pf-velocity  { --fy: -0.3125rem;  --fx: 0;          animation: panelFloat 3.5s  ease-in-out -1.25s infinite; }
+    .pf-perf      { --fy: -0.28125rem; --fx: 0;          animation: panelFloat 4.75s ease-in-out -2s    infinite; }
+    .pf-breakdown { --fy: -0.3125rem;  --fx: -0.0625rem; animation: panelFloat 4s    ease-in-out -0.5s  infinite; }
+    .pf-leased    { --fy: -0.375rem;   --fx: 0.0625rem;  animation: panelFloat 5s    ease-in-out -1.75s infinite; }
+    .pf-directory { --fy: -0.3125rem;  --fx: 0;          animation: panelFloat 5.5s  ease-in-out -2.5s  infinite; }
+
+    /* Pause the float while the tab is hidden (Page Visibility → body.anim-paused). */
+    body.anim-paused .pf-retail, body.anim-paused .pf-offices,
+    body.anim-paused .pf-occ, body.anim-paused .pf-stats,
+    body.anim-paused .pf-velocity, body.anim-paused .pf-perf,
+    body.anim-paused .pf-breakdown, body.anim-paused .pf-leased,
+    body.anim-paused .pf-directory, body.anim-paused .pf-tenants,
+    body.anim-paused .pf-buildings {
+      animation-play-state: paused;
+    }
+
+    /* Reduced motion: no float/entrance transforms at all — everything static + visible. */
+    @media (prefers-reduced-motion: reduce) {
+      .animate-in,
+      .pf-retail, .pf-offices, .pf-occ, .pf-stats, .pf-velocity, .pf-perf,
+      .pf-breakdown, .pf-leased, .pf-directory, .pf-tenants, .pf-buildings {
+        animation: none !important;
+        opacity: 1 !important;
+        transform: none !important;
+        translate: none !important;
+        will-change: auto;
+      }
+    }
+
+    /* ── Pulse dot for "live" indicator ─────────────────── */
+    .pulse-dot {
+      width: 0.375rem;
+      height: 0.375rem;
+      border-radius: 50%;
+      background: var(--accent-hi);
+      display: inline-block;
+      margin-right: 0.375rem;
+      animation: pulse 2.6s ease-in-out infinite;
+    }
+
+    /* Calm "live" breath — a gentle opacity fade, not an expanding neon ring (§12). */
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.4; }
+    }
+
+    /* Responsive sizing is handled by uniform scaling of the fixed 1920×1080
+       canvas (see .dashboard `--fit` + fitDashboard() in JS), so 1080p / 1440p /
+       4K all render the identical, balanced composition. No media queries needed. */
+
+    /* ── Tenant Search ───────────────────────────── */
+    .tenant-search { margin-left: auto; display: flex; align-items: center; }
+    .tenant-search input {
+      width: 11.25rem;
+      background: var(--bg);
+      border: 0.0625rem solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--white);
+      font-family: inherit;
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 0.375rem 0.75rem;
+      outline: none;
+      transition: border-color 0.25s ease, background 0.25s ease;
+    }
+    .tenant-search input::placeholder { color: var(--white-30); }
+    .tenant-search input:focus {
+      border-color: var(--accent-hi);
+      background: rgba(135, 100, 171, 0.05);
+    }
+
+    /* Empty-search state row */
+    .tenant-empty td {
+      text-align: center !important;
+      color: var(--white-30) !important;
+      font-weight: 500 !important;
+      padding: 0.875rem 0.625rem !important;
+    }
+
+    /* WebKit custom scrollbar */
+    .tenant-card .card-body::-webkit-scrollbar { width: 0.375rem; }
+    .tenant-card .card-body::-webkit-scrollbar-track { background: transparent; }
+    .tenant-card .card-body::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 0.1875rem;
+    }
+    .tenant-card .card-body::-webkit-scrollbar-thumb:hover { background: var(--white-30); }
+
+    /* ── Presentation (Idle / TV) Mode indicator ───────── */
+    .presentation-badge {
+      display: none;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--accent-lo);
+      border: 0.0625rem solid var(--accent-md);
+      color: var(--accent-hi);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.0625rem;
+      padding: 0.375rem 0.75rem;
+      border-radius: 0.25rem;
+    }
+    .presentation-badge .pres-dot {
+      width: 0.375rem; height: 0.375rem; border-radius: 50%;
+      background: var(--accent-hi);
+      animation: pulse-teal 2.2s ease-in-out infinite;
+    }
+    @keyframes pulse-teal {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.4; }
+    }
+
+    /* ── Project Selector Tabs ───────────────────── */
+    .project-tabs {
+      display: flex;
+      gap: 1.25rem;
+      border-bottom: 0.0625rem solid var(--hairline);
+      padding-bottom: 0.5rem;
+    }
+    .project-tab {
+      font-family: inherit;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.0625rem;
+      text-transform: uppercase;
+      color: var(--white-30);
+      background: transparent;
+      border: none;
+      border-bottom: 0.125rem solid transparent;
+      padding: 0.5rem 0.25rem;
+      margin-bottom: -0.625rem; /* align with border bottom */
+      cursor: pointer;
+      transition: all 0.25s ease;
+    }
+    .project-tab:hover {
+      color: var(--white-70);
+    }
+    .project-tab.active {
+      color: var(--accent-hi);
+      border-bottom-color: var(--accent-hi);
+      font-weight: 700;
+    }
+
+    /* ── Brand graphic device (footer diamond) ── */
+    .brand-diamond {
+      width: 0.375rem;
+      height: 0.375rem;
+      background: var(--accent);
+      transform: rotate(45deg);
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    /* The official BlackSand lockup — title-case "Value Perfected", Regular +
+       Bold, monochrome (purple stays reserved for the brand diamond/mark). */
+    .bottom-bar .tagline {
+      font-size: 0.75rem;
+      font-weight: 400;
+      letter-spacing: 0.0125rem;
+      color: var(--white-50);
+    }
+    .bottom-bar .tagline strong { color: var(--white-70); font-weight: 700; }
+    .bottom-bar .bar-sep {
+      width: 0.1875rem;
+      height: 0.1875rem;
+      border-radius: 50%;
+      background: var(--border);
+      display: inline-block;
+    }
+
+    /* ── Top Tenants Section ────────────────────────────── */
+    .top-tenants-section {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .top-tenants-header {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+    }
+    .top-tenants-header .icon {
+      width: 1.875rem;
+      height: 1.875rem;
+      border-radius: 0.375rem;
+      background: transparent;
+      border: 0.0625rem solid var(--hairline);
+      color: var(--white-50);
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+    .top-tenants-header h2 {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.0625rem;
+      text-transform: uppercase;
+      color: var(--white-70);
+    }
+    .top-tenants-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+    }
+    /* Plaques share the unified secondary-card language (no glass, no float, no
+       tilt) so Top Tenants belong to the same design system as every other panel.
+       Depth is light: surface gradient + grey border + inset top-light + a soft
+       directional drop shadow — the 3D medallion is the only dimensional accent. */
+    .tenant-plaque-inner {
+      position: relative;
+      background:
+        linear-gradient(180deg,
+          rgba(255, 255, 255, 0.04) 0%,
+          rgba(255, 255, 255, 0.012) 30%,
+          rgba(0, 0, 0, 0.06) 100%),
+        var(--surface);
+      border: 0.0625rem solid rgba(124, 134, 142, 0.22);
+      border-radius: var(--radius);
+      padding: 0.875rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.875rem;
+      transition: border-color 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+                  box-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+      box-shadow:
+        inset 0 0.0625rem 0 rgba(255, 255, 255, 0.04),
+        inset 0 -0.0625rem 0 rgba(0, 0, 0, 0.30),
+        0 0.3125rem 0.875rem rgba(0, 0, 0, 0.24),
+        0 0.0625rem 0.1875rem rgba(0, 0, 0, 0.36);
+    }
+    /* Restrained TV-safe hover — firmer border + a touch more shadow. No motion. */
+    .tenant-plaque-inner:hover {
+      border-color: rgba(178, 181, 185, 0.32);
+      box-shadow:
+        inset 0 0.0625rem 0 rgba(255, 255, 255, 0.055),
+        inset 0 -0.0625rem 0 rgba(0, 0, 0, 0.32),
+        0 0.5rem 1.25rem rgba(0, 0, 0, 0.28),
+        0 0.125rem 0.25rem rgba(0, 0, 0, 0.38);
+    }
+    .plaque-rank {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.75rem;
+      font-size: 1.125rem;
+      font-weight: 700;
+      color: rgba(185, 166, 217, 0.12);
+      line-height: 1;
+    }
+    .plaque-initials {
+      width: 3.25rem;
+      height: 3.25rem;
+      border-radius: 50%;
+      background: rgba(135, 100, 171, 0.10);
+      border: 0.0625rem solid rgba(185, 166, 217, 0.22);
+      display: grid;
+      place-items: center;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--accent-hi);
+      flex-shrink: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.03125rem;
+    }
+    /* When a Three.js medallion is mounted, drop the flat circle chrome */
+    .plaque-initials.has-3d {
+      background: none;
+      border: none;
+    }
+    .plaque-initials .medallion-canvas {
+      display: block;
+      width: 3.25rem;
+      height: 3.25rem;
+      filter: drop-shadow(0 0.25rem 0.4375rem rgba(0, 0, 0, 0.62));
+    }
+    .plaque-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .plaque-name {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--white-70);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .plaque-area {
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--accent-hi);
+      line-height: 1.2;
+      margin-top: 0.125rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .plaque-area .kpi-unit {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--white-30);
+    }
+
+    /* ── Bottom-left column wrapper: Top Tenants (natural height) + the building
+       occupancy panel (fills the remaining space in the `tenants` grid cell). ── */
+    .tenants-col {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      min-height: 0;
+    }
+    .tenants-col .top-tenants-section { flex: 0 0 auto; }
+
+    /* ── Portfolio Occupancy by Building ──────────────────────
+       A compact vertical STACKED-COLUMN chart in the shared card language, filling the
+       same approved panel. One column per building; column FILL height = overall
+       occupancy%, and the filled portion is split by department (share of leased area),
+       with the graphite track above representing vacancy. Flat/crisp — the outer card
+       provides the depth. Colours: Retail = brand purple, Offices = lighter
+       lavender-grey, Serviced Apts (future) = neutral-purple, Vacant = graphite track. */
+    .building-occupancy-card {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .bo-header {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      padding: 0.5rem 1rem 0.375rem;
+      border-bottom: 0.0625rem solid var(--hairline);
+      flex: 0 0 auto;
+    }
+    .bo-header svg { color: var(--white-50); flex-shrink: 0; }
+    .bo-header h2 {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.0625rem;
+      text-transform: uppercase;
+      color: var(--white-70);
+    }
+    /* Compact legend (upper-right) — one chip per department present + Vacant. */
+    .bo-legend { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; }
+    .bo-leg {
+      display: inline-flex; align-items: center; gap: 0.3125rem;
+      font-size: 0.5625rem; font-weight: 600; letter-spacing: 0.03125rem; text-transform: uppercase;
+      color: var(--white-50);
+    }
+    .bo-leg-dot { width: 0.5rem; height: 0.5rem; border-radius: 0.125rem; flex-shrink: 0; }
+    .bo-leg-retail   { background: var(--accent); }
+    .bo-leg-offices  { background: #a79db9; }
+    .bo-leg-serviced { background: #6f6685; }
+    .bo-leg-vacant   { background: #211f28; border: 0.0625rem solid #322e3a; }
+
+    /* The chart body — seven columns spread evenly across the panel. */
+    .bo-chart {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+      display: flex;
+      align-items: stretch;
+      gap: 0.625rem;
+      padding: 0.625rem 1.125rem 0.5625rem;
+    }
+    .bo-col {
+      flex: 1 1 0;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .bo-col-pct {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: -0.01875rem;
+      line-height: 1;
+      color: var(--accent-hi);
+      font-variant-numeric: tabular-nums;
+      flex: 0 0 auto;
+    }
+    /* Vertical bar: graphite track (= vacant); the absolute fill grows from the base. */
+    .bo-col-track {
+      position: relative;
+      flex: 1 1 auto;
+      min-height: 0;
+      width: 72%;
+      max-width: 2.75rem;
+      background: #211f28;
+      border: 0.0625rem solid #2b2833;
+      border-radius: 0.25rem;
+      overflow: hidden;
+    }
+    .bo-fill {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 0;                              /* animated 0 → occupancy% on render */
+      overflow: hidden;
+      border-radius: 0.25rem 0.25rem 0 0;
+      transition: height 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .bo-seg { width: 100%; }                  /* height set inline = dept share of leased */
+    .bo-seg-retail   { background: var(--accent); }   /* muted BlackSand purple */
+    .bo-seg-offices  { background: #a79db9; }          /* lighter lavender-grey */
+    .bo-seg-serviced { background: #6f6685; }          /* neutral-purple (future) */
+    .bo-col-label {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      line-height: 1;
+      color: var(--white-70);
+      flex: 0 0 auto;
+    }
+    .bo-col-area {
+      font-size: 0.53125rem;
+      font-weight: 500;
+      line-height: 1.1;
+      color: var(--white-30);
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+  </style>
+</head>
+<body>
+  <!-- ═══════ BLACKSAND PARTICLE-WAVE BACKGROUND ═══════
+       Fixed, behind everything (z-index 0), non-interactive. One Three.js Points
+       surface (GPU-displaced wave of muted-purple beads) on a charcoal ground.
+       The CSS ground on .wave-background is also the WebGL fallback; .wave-veil is
+       the readability layer. Decorative only → aria-hidden. -->
+  <div class="wave-background" aria-hidden="true">
+    <canvas id="waveBackgroundCanvas"></canvas>
+    <div class="wave-veil"></div>
+  </div>
+
+  <div class="dashboard">
+    <!-- ═══════ HEADER ═══════ -->
+    <header class="header animate-in">
+      <div class="header-left">
+        <!-- Official BlackSand lockup — the uploaded SVG (page-3.svg) rendered flat and
+             directly. It already contains the wordmark, so there is NO separate brand
+             text beside it. -->
+        <h1 class="brand-logo-wrap">
+          <img class="brand-logo" src="page-3.svg" alt="Blacksand" />
+        </h1>
+        <div class="project-name" id="projectName">Business Address</div>
+      </div>
+      <div class="header-right">
+        <div class="presentation-badge" id="presentationBadge">
+          <span class="pres-dot"></span>Presentation Mode
+        </div>
+        <div class="header-updated">
+          <div class="label"><span class="pulse-dot"></span>Last Updated</div>
+          <div class="value" id="lastUpdated">—</div>
+        </div>
+        <div class="divider-v"></div>
+        <div class="header-clock">
+          <div class="date" id="currentDate">—</div>
+          <div class="time" id="currentTime">—</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ═══════ PROJECT TABS (populated from the projects data) ═══════ -->
+    <nav class="project-tabs animate-in delay-1" id="projectTabs"></nav>
+
+    <!-- ═══════ MAIN (V2 — Central Spine around the 3D occupancy model) ═══════ -->
+    <div class="main">
+
+      <!-- ── Retail asset card (top-left) ── -->
+      <div class="card prop-card asset-card animate-in delay-1 pf-retail" style="grid-area: retail;">
+        <div class="type-badge">Retail</div>
+        <div class="gla" id="retailGLA">1,892 <span class="kpi-unit">m²</span></div>
+        <div class="gla-label">Gross Leasable Area</div>
+        <div class="leased-row">
+          <span class="leased-label">Leased</span>
+          <span class="leased-pct" id="retailPct">52%</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="retailBar" style="width:0%" data-target="52"></div></div>
+      </div>
+
+      <!-- ── Offices asset card (top-right) ── -->
+      <div class="card prop-card asset-card animate-in delay-1 pf-offices" style="grid-area: offices;">
+        <div class="type-badge">Offices</div>
+        <div class="gla" id="officeGLA">11,267 <span class="kpi-unit">m²</span></div>
+        <div class="gla-label">Gross Leasable Area</div>
+        <div class="leased-row">
+          <span class="leased-label">Leased</span>
+          <span class="leased-pct" id="officePct">47%</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="officeBar" style="width:0%" data-target="47"></div></div>
+      </div>
+
+      <!-- ── Centre stage: 3D occupancy centrepiece + Portfolio Statistics ── -->
+      <div class="stage animate-in delay-2">
+        <div class="occupancy-stage pf-occ" id="occupancyStage">
+          <!-- CSS conic-gradient ring: visible until (or unless) the 3D model mounts -->
+          <div class="stage-fallback" aria-hidden="true"></div>
+          <!-- Crisp HTML overlay — the readable focal number -->
+          <div class="stage-label">
+            <div class="pct" id="occPct">—</div>
+            <div class="sub">Leased</div>
+          </div>
+        </div>
+        <div class="portfolio-stats pf-stats" id="portfolioStats">
+          <div class="pstat">
+            <div class="pstat-value" id="statTotalGLA">—</div>
+            <div class="pstat-label">Total GLA</div>
+          </div>
+          <div class="pstat">
+            <div class="pstat-value" id="statLeased">—</div>
+            <div class="pstat-label">Leased Area</div>
+          </div>
+          <div class="pstat">
+            <div class="pstat-value" id="statVacant">—</div>
+            <div class="pstat-label">Vacant Area</div>
+          </div>
+          <div class="pstat">
+            <div class="pstat-value" id="statTenants">—</div>
+            <div class="pstat-label">Tenants</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Left rail: leasing performance (velocity + trend ribbon) ── -->
+      <div class="rail left-rail animate-in delay-3" style="grid-area: leftrail;">
+        <div class="card velocity-card velocity-panel pf-velocity">
+          <div class="vel-panel-head">
+            <span class="vel-panel-title">Leasing Velocity</span>
+            <span class="vel-panel-sub">3-month avg</span>
+          </div>
+          <div class="vel-line">
+            <span class="vel-line-label" id="retailVelLabel">Retail</span>
+            <span class="vel-line-val" id="retailVelocity">—</span>
+          </div>
+          <div class="vel-line">
+            <span class="vel-line-label">Office</span>
+            <span class="vel-line-val" id="officeVelocity">—</span>
+          </div>
+          <div class="vel-line is-overall">
+            <span class="vel-line-label">Overall</span>
+            <span class="vel-line-val" id="overallVelocity">—</span>
+          </div>
+        </div>
+        <!-- Performance Summary ribbon (trend indicators; populated by JS) -->
+        <div class="card perf-summary pf-perf" id="perfSummary"></div>
+      </div>
+
+      <!-- ── Right rail: charts that support the occupancy model ── -->
+      <div class="rail right-rail animate-in delay-3" style="grid-area: rightrail;">
+        <div class="card type-breakdown-card pf-breakdown">
+          <div class="card-header">
+            <div class="icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 6h16M4 12h11M4 18h6"/>
+              </svg>
+            </div>
+            <h2>Occupancy Breakdown</h2>
+          </div>
+          <div class="type-breakdown-body">
+            <canvas id="typeBreakdownChart"></canvas>
+          </div>
+        </div>
+
+        <div class="card leased-area-card pf-leased">
+          <div class="card-header">
+            <div class="icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 3v18h18"/><rect x="7" y="12" width="3.4" height="6"/><rect x="13.5" y="8" width="3.4" height="10"/>
+              </svg>
+            </div>
+            <h2>Leased Area</h2>
+          </div>
+          <div class="leased-area-body">
+            <canvas id="leasedAreaChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Bottom band (left): Top Tenants + Portfolio Occupancy by Building.
+           Both share the `tenants` grid cell (stacked); Top Tenants keeps its natural
+           height, the building panel fills the remaining space beneath it. ── -->
+      <div class="tenants-col" style="grid-area: tenants;">
+        <div class="top-tenants-section animate-in delay-4 pf-tenants">
+          <div class="top-tenants-header">
+            <div class="icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/>
+              </svg>
+            </div>
+            <h2>Top Tenants</h2>
+          </div>
+          <div class="top-tenants-grid" id="topTenantsGrid"></div>
+        </div>
+
+        <!-- Portfolio Occupancy by Building — data-driven, one item per building in
+             the current project (Retail/Offices departments; JS-populated). -->
+        <div class="card building-occupancy-card animate-in delay-5 pf-buildings">
+          <div class="bo-header">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 21h18"/><path d="M5 21V7l6-4v18"/><path d="M11 21V9l8 3v9"/><path d="M8 8h.01M8 12h.01M8 16h.01M15 13h.01M15 17h.01"/>
+            </svg>
+            <h2>Portfolio Occupancy by Building</h2>
+            <div class="bo-legend" id="boLegend" aria-hidden="true"></div>
+          </div>
+          <div class="bo-chart" id="buildingOccupancyGrid" role="img" aria-label="Occupancy by building"></div>
+        </div>
+      </div>
+
+      <!-- ── Bottom band: Tenant Directory (operational tool) ── -->
+      <div class="right-col animate-in delay-4" style="grid-area: directory;">
+        <div class="card tenant-card pf-directory">
+          <div class="card-header">
+            <div class="icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 21V4h10v17"/><path d="M14 9h6v12h-6"/><path d="M7 8h4M7 12h4M7 16h4M17 13h.01M17 17h.01"/>
+              </svg>
+            </div>
+            <h2>Tenant Directory</h2>
+            <div class="tenant-search">
+              <input type="search" id="tenantSearch" placeholder="Search tenants…" aria-label="Search tenants" autocomplete="off" />
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="tenant-section-label">Retail</div>
+            <table class="tenant-table" id="retailTable">
+              <thead>
+                <tr>
+                  <th>Tenant</th>
+                  <th>Type</th>
+                  <th>Area (m²)</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+
+            <div class="tenant-section-label" style="margin-top:0.625rem;">Offices</div>
+            <table class="tenant-table" id="officeTable">
+              <thead>
+                <tr>
+                  <th>Tenant</th>
+                  <th>Type</th>
+                  <th>Area (m²)</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main -->
+
+    <!-- ═══════ ADDRESS BAR ═══════ -->
+    <div class="bottom-bar animate-in delay-5">
+      <span class="brand-diamond"></span>
+      <span class="tagline">Value <strong>Perfected</strong></span>
+      <span class="bar-sep"></span>
+      <span class="address-text" id="addressText">1200 Business Boulevard, Financial District</span>
+    </div>
+  </div><!-- /dashboard -->
+
+  <script>
+    /* ═══════════════════════════════════════════════════
+       DATA
+       ═══════════════════════════════════════════════════ */
+    /* Real tenant data. Each project has a `retail` and an `office` property;
+       every tenant is a separate lease entry (duplicates are intentional — the
+       same tenant can hold several leases). Leased area is derived by summing
+       tenant areas, so tenant count / leased totals / chart values all follow
+       automatically from this list.
+         gla  = gross leasable area of the building (includes vacant space).
+                Set to null when unknown; metrics then fall back to leased area.
+       projects[0] (Business Address) is the default view shown on load.
+       projects[1] (Town Center) is prepared so it can be displayed later. */
+    const projects = [
+      {
+        project: 'Business Address',
+        address: '1200 Business Boulevard, Financial District',
+        retail: {            // Retail / Restaurant
+          label: 'Retail',
+          gla: 1892,         // real gross leasable area (m²)
+          // leaseDate is an ISO string; real values will come from Monday.com.
+          tenants: [
+            { name: 'Tita',                type: 'Restaurant', area: 317.71, leaseDate: '2026-05-20' },
+            { name: 'Four Spa',            type: 'Retail',     area: 150.33, leaseDate: '2026-06-14' },
+            { name: 'Luna Pilates Studio', type: 'Retail',     area: 142.66, leaseDate: '2026-02-11' },
+            { name: 'Luna Pilates Studio', type: 'Retail',     area: 56.45,  leaseDate: '2026-06-28' },
+            { name: 'LABOCCA',             type: 'Restaurant', area: 70.47,  leaseDate: '2025-11-03' },
+            { name: 'Shiro Sushi',         type: 'Restaurant', area: 183.50, leaseDate: '2026-04-22' },
+            { name: 'LABOCCA',             type: 'Restaurant', area: 70.31,  leaseDate: '2026-01-15' },
+          ],
+        },
+        office: {            // Offices
+          label: 'Offices',
+          gla: 11267,        // real gross leasable area (m²)
+          tenants: [
+            { name: 'Malath',          type: 'Offices', area: 373.14, leaseDate: '2026-05-05' },
+            { name: 'Malath',          type: 'Offices', area: 804.89, leaseDate: '2025-09-10' },
+            { name: 'Malath',          type: 'Offices', area: 682.91, leaseDate: '2026-06-02' },
+            { name: 'Malath',          type: 'Offices', area: 686.79, leaseDate: '2026-03-18' },
+            { name: 'Malath',          type: 'Offices', area: 700.52, leaseDate: '2026-06-20' },
+            { name: 'Dalah Trane Co.', type: 'Offices', area: 422.95, leaseDate: '2026-04-15' },
+            { name: 'Malath',          type: 'Offices', area: 700.52, leaseDate: '2025-12-01' },
+            { name: 'Malath',          type: 'Offices', area: 557.93, leaseDate: '2026-07-01' },
+            { name: 'Stream Offices',  type: 'Offices', area: 361.54, leaseDate: '2026-02-28' },
+          ],
+        },
+        // Building-level leasing (from the Buildings workbook). Store only departments
+        // that have inventory (total > 0); overall is DERIVED by summing them. Serviced
+        // Apartments have no figures yet → intentionally absent (data model extends cleanly).
+        buildings: [
+          { id: '1',    departments: { retail: { label: 'Retail', leased: 317.71, total: 317.71 },  offices: { label: 'Offices', leased: 4506.70, total: 4506.70 } } },
+          { id: '2',    departments: { retail: { label: 'Retail', leased: 150.33, total: 293.63 },  offices: { label: 'Offices', leased: 361.54,  total: 2161.72 } } },
+          { id: '3',    departments: { retail: { label: 'Retail', leased: 199.11, total: 373.02 },  offices: { label: 'Offices', leased: 422.95,  total: 2522.76 } } },
+          { id: '4',    departments: { retail: { label: 'Retail', leased: 0,      total: 259.76 },  offices: { label: 'Offices', leased: 0,       total: 2076.19 } } },
+          { id: '5',    departments: { retail: { label: 'Retail', leased: 183.50, total: 506.93 } } },
+          { id: 'C-06', departments: { retail: { label: 'Retail', leased: 70.47,  total: 70.47 } } },
+          { id: 'C-07', departments: { retail: { label: 'Retail', leased: 70.31,  total: 70.31 } } },
+        ],
+      },
+      {
+        project: 'Town Center',
+        address: 'Town Center, Commercial District',
+        // GLA and leased % are provided directly for Town Center; the KPIs,
+        // chart, progress bars and vacancy are calculated from these figures.
+        // The tenant list below is displayed as-is and does NOT drive these
+        // numbers yet (pending the official Town Center tenant leased-area list).
+        retail: {            // Commercial
+          label: 'Commercial',
+          gla: 14850, leasedPct: 0.40,
+          tenants: [
+            { name: 'Al Tamimi',           type: 'Super Market', area: 3100,   logo: 'logos/al-tamimi.png' },
+            { name: 'Pizza Hut',           type: 'F&B',          area: 158    },
+            { name: 'Shebbak Beirut',      type: 'F&B',          area: 131.12 },
+            { name: 'Vigin Telecom',       type: 'Retail',       area: 99.21  },
+            { name: 'Happy Fitness',       type: 'Retail',       area: 92.88  },
+            { name: 'Whoa Tea Café',       type: 'F&B',          area: 99.21  },
+            { name: 'Kun 2 Fitness',       type: 'GYM',          area: 295.57 },
+            { name: 'FunQuest',            type: 'FEC',          area: 330.13 },
+            { name: 'Aster Pharmacy',      type: 'Retail',       area: 297    },
+            { name: 'Lushlines Saloon',    type: 'Retail',       area: 174.90 },
+            { name: 'Shadow Beauty Salon', type: 'Retail',       area: 153.31 },
+            { name: "Mini's Toy Store",    type: 'Retail',       area: 298.84 },
+            { name: "Mini's Toy Store",    type: 'Retail',       area: 161    },
+            { name: "Mini's Toy Store",    type: 'Retail',       area: 177.32 },
+            { name: "5 Sec's Saloon",      type: 'Retail',       area: 134.69 },
+            { name: 'Yellow Spa',          type: 'Retail',       area: 236.63 },
+          ],
+        },
+        office: {            // Town Center Offices
+          label: 'Offices',
+          gla: 9132, leasedPct: 0.69,
+          tenants: [
+            { name: 'Jussyr Al Imdad',            type: 'Offices', area: 134.33 },
+            { name: 'Jussyr Al Imdad',            type: 'Offices', area: 123.55 },
+            { name: 'Jussyr Al Imdad',            type: 'Offices', area: 97.39  },
+            { name: 'Jussyr Al Imdad',            type: 'Offices', area: 118.05 },
+            { name: 'Jussyr Al Imdad',            type: 'Offices', area: 127.19 },
+            { name: 'Jussyr Al Imdad',            type: 'Offices', area: 154.87 },
+            { name: 'Jussyr Al Imdad',            type: 'Offices', area: 155.21 },
+            { name: 'Jussyr Al Imdad',            type: 'Offices', area: 117.45 },
+            { name: 'Jussyr Al Imdad',            type: 'Offices', area: 118.80 },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 193.87, logo: 'logos/tharwah_logo.png' },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 186.11 },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 136.42 },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 171.27 },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 175.05 },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 217.32 },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 193.84 },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 186.11 },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 136.42 },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 171.30 },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 217.36 },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 226.65 },
+            { name: 'Sustainable Profit Co.',     type: 'Offices', area: 94.86  },
+            { name: 'Sustainable Profit Co.',     type: 'Offices', area: 82.78  },
+            { name: 'The Four Constructions Co.', type: 'Offices', area: 75.86  },
+            { name: 'The Four Constructions Co.', type: 'Offices', area: 98.86  },
+            { name: 'The Four Pillars Co.',       type: 'Offices', area: 105.13 },
+            { name: 'The Four Architects Co.',    type: 'Offices', area: 100.99 },
+            { name: 'The Four Architects Co.',    type: 'Offices', area: 99.23  },
+            { name: 'The Four Pillars Co.',       type: 'Offices', area: 95.82  },
+            { name: 'The Four Constructions Co.', type: 'Offices', area: 98.61  },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 95.50  },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 104.48 },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 140.17 },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 52.24  },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 99.19  },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 107.28 },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 141.25 },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 118.15 },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 91.14  },
+            { name: 'Al Tharwah Co.',             type: 'Offices', area: 111.86 },
+          ],
+        },
+        // Building-level leasing (from the Buildings workbook). Buildings 2–4 carry
+        // office inventory that is 0% leased (total > 0, leased 0) → shown with an empty
+        // track; Building 1 has no office inventory (total 0) → Offices omitted.
+        buildings: [
+          { id: '1', departments: { retail: { label: 'Retail', leased: 3680.42, total: 8553.86 }, offices: { label: 'Offices', leased: 0,       total: 0 } } },
+          { id: '2', departments: { retail: { label: 'Retail', leased: 625.70,  total: 1159.72 }, offices: { label: 'Offices', leased: 0,       total: 399.90 } } },
+          { id: '3', departments: { retail: { label: 'Retail', leased: 297.00,  total: 627.13 },  offices: { label: 'Offices', leased: 0,       total: 399.90 } } },
+          { id: '4', departments: { retail: { label: 'Retail', leased: 328.21,  total: 1137.45 }, offices: { label: 'Offices', leased: 0,       total: 1998.98 } } },
+          { id: '5', departments: { retail: { label: 'Retail', leased: 771.85,  total: 1139.87 }, offices: { label: 'Offices', leased: 1998.98, total: 1998.98 } } },
+          { id: '6', departments: { retail: { label: 'Retail', leased: 236.63,  total: 1089.05 }, offices: { label: 'Offices', leased: 2141.30, total: 2141.30 } } },
+          { id: '7', departments: { retail: { label: 'Retail', leased: 0,       total: 1142.52 }, offices: { label: 'Offices', leased: 2192.94, total: 2192.94 } } },
+        ],
+      },
+    ];
+
+    let currentIndex = 0; // index of the project currently on screen
+
+    /* ═══════ Derived metrics for a project ═══════
+       Leased area = sum of tenant lease areas (source of truth). GLA is the
+       building's gross leasable area; when unknown (null) we fall back to the
+       leased area so the numbers stay coherent. */
+    function sumAreas(tenants) {
+      return tenants.reduce((total, t) => total + t.area, 0);
+    }
+    function computeMetrics(p) {
+      const retailTenantArea = sumAreas(p.retail.tenants);
+      const officeTenantArea = sumAreas(p.office.tenants);
+      const retailGLA = (p.retail.gla != null) ? p.retail.gla : retailTenantArea;
+      const officeGLA = (p.office.gla != null) ? p.office.gla : officeTenantArea;
+      // Leased area: use an explicit leasedPct (fraction 0–1) when the project
+      // provides one; otherwise derive it from the sum of tenant lease areas.
+      const retailLeased = (p.retail.leasedPct != null) ? retailGLA * p.retail.leasedPct : retailTenantArea;
+      const officeLeased = (p.office.leasedPct != null) ? officeGLA * p.office.leasedPct : officeTenantArea;
+      const totalGLA = retailGLA + officeGLA;
+      const totalLeased = retailLeased + officeLeased;
+      const totalVacant = Math.max(0, totalGLA - totalLeased);
+      const retailPct = retailGLA ? (retailLeased / retailGLA) * 100 : 0;
+      const officePct = officeGLA ? (officeLeased / officeGLA) * 100 : 0;
+      const overallLeasedPct = totalGLA ? ((totalLeased / totalGLA) * 100).toFixed(1) : '0.0';
+      const totalTenants = p.retail.tenants.length + p.office.tenants.length;
+      return {
+        retailGLA, officeGLA, retailLeased, officeLeased,
+        retailPct, officePct, totalGLA, totalLeased, totalVacant,
+        overallLeasedPct, totalTenants,
+      };
+    }
+
+    /* ═══════════════════════════════════════════════════
+       LEASING VELOCITY
+       Velocity = m² leased in the last 90 days ÷ 90 (a 3-month daily average),
+       computed per category from each tenant's leaseDate.
+       ═══════════════════════════════════════════════════ */
+    const VELOCITY_WINDOW_DAYS = 90;
+
+    // Deterministic mock leaseDate for tenants that don't have one yet.
+    // Real lease dates will arrive from Monday.com and are respected as-is.
+    function mockLeaseDate(seed, i) {
+      let h = 0;
+      for (let c = 0; c < seed.length; c++) h = (h * 31 + seed.charCodeAt(c)) >>> 0;
+      const daysAgo = (h + i * 37) % 200;          // spread across ~0–200 days
+      const d = new Date();
+      d.setHours(12, 0, 0, 0);
+      d.setDate(d.getDate() - daysAgo);
+      return d.toISOString().slice(0, 10);         // YYYY-MM-DD, same shape as Monday.com
+    }
+
+    // Fill in any missing leaseDate once, so the tenant data always carries the
+    // field. Tenants that already have a leaseDate (real data) are left untouched.
+    function assignMockLeaseDates() {
+      projects.forEach(p => {
+        [p.retail, p.office].forEach((cat, ci) => {
+          cat.tenants.forEach((t, ti) => {
+            if (!t.leaseDate) t.leaseDate = mockLeaseDate(p.project + ci + t.name, ti);
+          });
+        });
+      });
+    }
+
+    // Total leased m² among tenants whose leaseDate falls within the window.
+    function leasedAreaInWindow(tenants, now, windowDays = VELOCITY_WINDOW_DAYS) {
+      return tenants.reduce((sum, t) => {
+        if (!t.leaseDate) return sum;
+        const age = (now - new Date(t.leaseDate + 'T12:00:00')) / (1000 * 60 * 60 * 24);
+        return (age >= 0 && age <= windowDays) ? sum + t.area : sum;
+      }, 0);
+    }
+
+    // Velocity (m²/day) for retail, office and overall for a project.
+    function computeVelocity(p, now = new Date()) {
+      const retail  = leasedAreaInWindow(p.retail.tenants, now) / VELOCITY_WINDOW_DAYS;
+      const office  = leasedAreaInWindow(p.office.tenants, now) / VELOCITY_WINDOW_DAYS;
+      const overall = leasedAreaInWindow(p.retail.tenants.concat(p.office.tenants), now) / VELOCITY_WINDOW_DAYS;
+      return { retail, office, overall };
+    }
+
+    // Leased area (m²) by category — mirrors the occupancy model so the numbers
+    // agree with the KPIs (Town Center uses leasedPct; Business Address sums tenants).
+    function leasedAreaByCategory(p) {
+      const m = computeMetrics(p);
+      return {
+        retailLabel: p.retail.label || 'Retail',
+        officeLabel: p.office.label || 'Offices',
+        retail: m.retailLeased,
+        office: m.officeLeased,
+      };
+    }
+
+    // Leased area (m²) grouped by tenant type across both categories, sorted
+    // largest-first — powers the Occupancy Breakdown chart.
+    function leasedAreaByType(p) {
+      const totals = {};
+      p.retail.tenants.concat(p.office.tenants).forEach(t => {
+        totals[t.type] = (totals[t.type] || 0) + t.area;
+      });
+      const entries = Object.entries(totals).sort((a, b) => b[1] - a[1]);
+      return { labels: entries.map(e => e[0]), values: entries.map(e => Math.round(e[1])) };
+    }
+
+    /* ═══════ Top Tenants (grouped by name, top 3 by leased area) ═══════ */
+    function computeTopTenants(p) {
+      const all = p.retail.tenants.concat(p.office.tenants);
+      const grouped = {};
+      all.forEach(t => {
+        if (!grouped[t.name]) grouped[t.name] = { area: 0, logo: null };
+        grouped[t.name].area += t.area;
+        if (!grouped[t.name].logo && t.logo) grouped[t.name].logo = t.logo; // carry logo through grouping
+      });
+      return Object.entries(grouped)
+        .sort((a, b) => b[1].area - a[1].area)
+        .slice(0, 3)
+        .map(([name, v]) => ({ name, area: v.area, logo: v.logo }));
+    }
+
+    function tenantInitials(name) {
+      return name.trim().split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase();
+    }
+
+    /* ═══════════════════════════════════════════════════
+       PORTFOLIO OCCUPANCY BY BUILDING
+       One reusable, data-driven renderer over project.buildings. Percentages are
+       always derived (leased / total); departments with no inventory (total 0) are
+       omitted; the overall figure is the sum of the building's stocked departments.
+       ═══════════════════════════════════════════════════ */
+    function calculateOccupancy(leased, total) {
+      return total > 0 ? (leased / total) * 100 : 0;   // zero-total safe
+    }
+    // Area with two decimals + thousands separators (e.g. 2,770.83).
+    function fmtArea2(v) {
+      return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    // Department order + palette (extend here when Serviced Apartments data arrives).
+    const DEPT_ORDER = ['retail', 'offices', 'serviced'];   // stacking order: bottom → top
+    const DEPT_LABEL = { retail: 'Retail', offices: 'Offices', serviced: 'Serviced Apts' };
+    // Departments that actually have inventory in this building (total > 0), in order.
+    function buildingDepartments(b) {
+      return DEPT_ORDER
+        .filter(k => b.departments[k] && b.departments[k].total > 0)
+        .map(k => ({ kind: k, dept: b.departments[k] }));
+    }
+    // Overall leased/total = sum of the stocked departments; percentage derived.
+    function buildingOverall(b) {
+      let leased = 0, total = 0;
+      buildingDepartments(b).forEach(({ dept }) => { leased += dept.leased; total += dept.total; });
+      return { leased, total, pct: calculateOccupancy(leased, total) };
+    }
+    // Compact axis label: numeric ids → "B1"…; keep the "C-06"/"C-07" identifiers.
+    function buildingShortLabel(id) { return /^C-/i.test(id) ? id : 'B' + id; }
+    // Native hover tooltip (details on desktop; never required to read the chart on a TV).
+    function buildingTooltip(b, o) {
+      const name = /^C-/i.test(b.id) ? b.id : 'Building ' + b.id;
+      const vacant = Math.max(0, o.total - o.leased);
+      const lines = [
+        `${name} — ${o.pct.toFixed(1)}% leased`,
+        `Leased ${fmtArea2(o.leased)} / Total ${fmtArea2(o.total)} m²`,
+        `Vacant ${fmtArea2(vacant)} m²`,
+      ];
+      buildingDepartments(b).forEach(({ dept }) => {
+        const dp = calculateOccupancy(dept.leased, dept.total);
+        lines.push(`${dept.label} ${dp.toFixed(1)}% (${fmtArea2(dept.leased)} / ${fmtArea2(dept.total)})`);
+      });
+      return lines.join('\n').replace(/"/g, '&quot;');
+    }
+    // One stacked column: fill height = overall occupancy%; within the fill each
+    // department takes its share of LEASED area (so segment-of-track = dept leased /
+    // building total, and the graphite above = vacancy). Segments are built top→bottom
+    // (reverse of DEPT_ORDER) so retail sits at the base.
+    function createBuildingColumn(b) {
+      const o = buildingOverall(b);
+      const depts = buildingDepartments(b);
+      const segs = depts.slice().reverse().map(({ kind, dept }) => {
+        const share = o.leased > 0 ? (dept.leased / o.leased) * 100 : 0;
+        return `<div class="bo-seg bo-seg-${kind}" style="height:${share.toFixed(3)}%"></div>`;
+      }).join('');
+      return `
+        <div class="bo-col" title="${buildingTooltip(b, o)}">
+          <div class="bo-col-pct">${o.pct.toFixed(1)}%</div>
+          <div class="bo-col-track">
+            <div class="bo-fill" data-target="${o.pct.toFixed(2)}" style="height:0%">${segs}</div>
+          </div>
+          <div class="bo-col-label">${buildingShortLabel(b.id)}</div>
+          <div class="bo-col-area">${fmtArea2(o.leased)} / ${fmtArea2(o.total)} <span class="kpi-unit">m²</span></div>
+        </div>`;
+    }
+    // Legend: one chip per department present across the project, then Vacant.
+    function renderBuildingLegend(project) {
+      const el = document.getElementById('boLegend');
+      if (!el) return;
+      const present = new Set();
+      (project.buildings || []).forEach(b => buildingDepartments(b).forEach(({ kind }) => present.add(kind)));
+      const chips = DEPT_ORDER.filter(k => present.has(k)).map(k =>
+        `<span class="bo-leg"><span class="bo-leg-dot bo-leg-${k}"></span>${DEPT_LABEL[k]}</span>`
+      );
+      chips.push('<span class="bo-leg"><span class="bo-leg-dot bo-leg-vacant"></span>Vacant</span>');
+      el.innerHTML = chips.join('');
+    }
+    function renderBuildingOccupancy(project) {
+      const chart = document.getElementById('buildingOccupancyGrid');
+      if (!chart) return;
+      renderBuildingLegend(project);
+      chart.innerHTML = (project.buildings || []).map(createBuildingColumn).join('');
+      // Animate each column's fill once from 0 → its overall occupancy% on (re)render.
+      requestAnimationFrame(() => {
+        chart.querySelectorAll('.bo-fill').forEach(f => { f.style.height = f.dataset.target + '%'; });
+      });
+    }
+
+
+    /* ── 3D medallion: a Three.js extruded coin bearing the tenant initials ── */
+    let medallions = [];
+    function disposeMedallions() {
+      medallions.forEach(m => { try { m.dispose(); } catch (e) {} });
+      medallions = [];
+    }
+    function createMedallion(size, initials, logo) {
+      try {
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
+        camera.position.set(0, 0, 5.2);
+
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        renderer.setSize(size, size);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.domElement.className = 'medallion-canvas';
+
+        const medEnv = makeStudioEnvironment(renderer);   // subtle reflections on the coin
+        if (medEnv) scene.environment = medEnv;
+        scene.add(new THREE.AmbientLight(0x928e97, 0.78));
+        const key = new THREE.DirectionalLight(0xffffff, 1.7); key.position.set(2, 3, 4); scene.add(key);
+        const rim = new THREE.DirectionalLight(0xb9a6d9, 0.62); rim.position.set(-3, -2, 2); scene.add(rim);
+
+        // Coin — extruded circle with a bevel so the edge catches light; a fine
+        // clearcoat + env reflection gives it a machined, premium finish.
+        const shape = new THREE.Shape(); shape.absarc(0, 0, 1.15, 0, Math.PI * 2, false);
+        const coinGeo = new THREE.ExtrudeGeometry(shape, {
+          depth: 0.4, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.1, bevelSegments: 3, curveSegments: 56
+        });
+        coinGeo.translate(0, 0, -0.2);
+        const coinMat = new THREE.MeshPhysicalMaterial({
+          color: 0x232028, metalness: 0.7, roughness: 0.28,
+          clearcoat: 0.18, clearcoatRoughness: 0.55, envMapIntensity: 0.7
+        });
+        const coin = new THREE.Mesh(coinGeo, coinMat);
+
+        // Teal edge ring accent
+        const ringMat = new THREE.MeshPhysicalMaterial({ color: 0xb9a6d9, metalness: 0.55, roughness: 0.34, clearcoat: 0.2, clearcoatRoughness: 0.5, envMapIntensity: 0.7, emissive: 0x140f1c });
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.06, 14, 56), ringMat);
+        ring.position.z = 0.2;
+
+        // Initials rendered to a canvas texture — the default front face and the
+        // fallback whenever a tenant has no logo (or the logo can't be used).
+        const tc = document.createElement('canvas'); tc.width = tc.height = 256;
+        const g = tc.getContext('2d');
+        g.fillStyle = '#efeaf6';
+        g.font = '700 132px "Hanken Grotesk", Arial, sans-serif';
+        g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText(initials, 128, 140);
+        const tex = new THREE.CanvasTexture(tc); tex.anisotropy = 4;
+        // depthTest:false forces the face to draw ON TOP of the coin (the coin's
+        // beveled front was occluding it). Circular face → no square corners.
+        const faceMat = new THREE.MeshBasicMaterial({
+          map: tex, transparent: true, side: THREE.DoubleSide, depthTest: false, depthWrite: false
+        });
+        const face = new THREE.Mesh(new THREE.CircleGeometry(1.05, 64), faceMat);
+        face.position.z = 0.22;
+        face.renderOrder = 10;
+
+        // Reusable logo support: load the tenant logo and show it on the coin
+        // face, as-is. Initials remain only if the image fails to load.
+        let logoTex = null;
+        if (logo) {
+          new THREE.TextureLoader().load(
+            logo,
+            (rawTex) => {
+              rawTex.colorSpace = THREE.SRGBColorSpace;
+              rawTex.anisotropy = 4;
+              logoTex = rawTex;
+              faceMat.map = rawTex;
+              faceMat.needsUpdate = true;
+            },
+            undefined,
+            () => { console.warn('Tenant logo failed to load:', logo); /* keep initials */ }
+          );
+        }
+
+        const group = new THREE.Group();
+        group.add(coin); group.add(ring); group.add(face);
+        scene.add(group);
+
+        let raf, logoReverted = false;
+        (function animate() {
+          raf = requestAnimationFrame(animate);
+          if (document.hidden) return;
+          const t = Date.now() * 0.001;
+          group.rotation.y = Math.sin(t * 0.6) * 0.5;   // gentle ±28° tilt
+          group.rotation.x = Math.sin(t * 0.4) * 0.14;
+          try {
+            renderer.render(scene, camera);
+          } catch (err) {
+            // A logo texture that can't be uploaded (e.g. a cross-origin local
+            // file) throws here — revert to initials once and keep rendering.
+            if (!logoReverted && faceMat.map !== tex) {
+              logoReverted = true;
+              faceMat.map = tex; faceMat.needsUpdate = true;
+            }
+          }
+        })();
+
+        return {
+          domElement: renderer.domElement,
+          dispose() {
+            cancelAnimationFrame(raf);
+            tex.dispose(); if (logoTex) logoTex.dispose();
+            if (medEnv) medEnv.dispose();
+            coinGeo.dispose(); coinMat.dispose();
+            ringMat.dispose(); faceMat.dispose(); renderer.dispose();
+            if (renderer.forceContextLoss) renderer.forceContextLoss();
+          }
+        };
+      } catch (e) { console.warn('medallion init failed:', e); return null; }
+    }
+
+    function renderTopTenants(p) {
+      const top3 = computeTopTenants(p);
+      const grid = document.getElementById('topTenantsGrid');
+      if (!grid) return;
+      disposeMedallions();
+      grid.innerHTML = top3.map((t, i) => `
+        <div class="tenant-plaque">
+          <div class="tenant-plaque-inner">
+            <div class="plaque-rank">#${i + 1}</div>
+            <div class="plaque-initials" data-initials="${tenantInitials(t.name)}" data-logo="${t.logo || ''}"></div>
+            <div class="plaque-info">
+              <div class="plaque-name">${t.name}</div>
+              <div class="plaque-area">${Math.round(t.area).toLocaleString()} <span class="kpi-unit">m²</span></div>
+            </div>
+          </div>
+        </div>
+      `).join('');
+      // One reusable renderer for every tenant: the medallion shows the tenant's
+      // logo (from its data) or its initials. Flat text only if WebGL is absent.
+      grid.querySelectorAll('.plaque-initials').forEach(el => {
+        const initials = el.getAttribute('data-initials') || '';
+        const logo = el.getAttribute('data-logo') || '';
+        if (typeof THREE !== 'undefined') {
+          const m = createMedallion(52, initials, logo);
+          if (m) { el.classList.add('has-3d'); el.appendChild(m.domElement); medallions.push(m); return; }
+        }
+        el.textContent = initials; // fallback (no WebGL)
+      });
+    }
+
+    // Brand palette for the categorical breakdown bars (Guidelines §3.4 / §3.5).
+    // Restrained single-family ramp (teal → slate) so the breakdown reads as one
+    // calm palette rather than a rainbow.
+    const TYPE_COLORS = ['#a98fc9', '#8a7ba0', '#6f677e', '#585462', '#47444e', '#3a383f'];
+
+    /* ═══════════════════════════════════════════════════
+       PERFORMANCE SUMMARY (trend ribbon)
+       Mock period-over-period deltas for now. To go live, replace the numeric
+       `value`s below with figures derived from Monday.com history (e.g. via a
+       getPerformanceSummary() that diffs the current period against the prior
+       one) — the render layer needs no changes.
+       ═══════════════════════════════════════════════════ */
+    const performanceSummary = {
+      occupancyChange: { value: 2.3,  unit: '%',  period: 'Compared with last month' },
+      velocityChange:  { value: 14,   unit: '%',  period: 'Compared with last quarter' },
+      newLeasing:      { value: 420,  unit: ' m²', period: 'New leased area this month' },
+    };
+
+    // Direction + formatted, signed text for a change object.
+    function formatChange(change) {
+      const v = change.value;
+      const dir = v > 0 ? 'up' : (v < 0 ? 'down' : 'neutral');
+      const sign = v > 0 ? '+' : ''; // negatives already carry '-'
+      return { dir, text: sign + v.toLocaleString() + change.unit };
+    }
+
+    // Small directional glyph (inherits the item's colour via currentColor).
+    function arrowSVG(dir) {
+      if (dir === 'up')   return '<svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1 L9.5 8.5 L0.5 8.5 Z" fill="currentColor"/></svg>';
+      if (dir === 'down') return '<svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 9 L0.5 1.5 L9.5 1.5 Z" fill="currentColor"/></svg>';
+      return '<svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><rect x="0.5" y="4.3" width="9" height="1.4" fill="currentColor"/></svg>';
+    }
+
+    function renderPerformanceSummary(data = performanceSummary) {
+      const el = document.getElementById('perfSummary');
+      if (!el) return;
+      const items = [
+        { title: 'Overall Occupancy', change: data.occupancyChange },
+        { title: 'Leasing Velocity',  change: data.velocityChange },
+        { title: 'New Leasing',       change: data.newLeasing },
+      ];
+      el.innerHTML = items.map(it => {
+        const f = formatChange(it.change);
+        return `
+          <div class="perf-item">
+            <div class="perf-title">${it.title}</div>
+            <div class="perf-valrow perf-${f.dir}">
+              <span class="perf-arrow">${arrowSVG(f.dir)}</span>
+              <span class="perf-value">${f.text}</span>
+            </div>
+            <div class="perf-period">${it.change.period}</div>
+          </div>`;
+      }).join('');
+    }
+
+    /* ═══════ Tenant tables (with live search filter) ═══════ */
+    // A tenant matches if the query appears in its name, type, or area.
+    function tenantMatches(t, q) {
+      if (!q) return true;
+      return t.name.toLowerCase().includes(q)
+          || t.type.toLowerCase().includes(q)
+          || String(t.area).includes(q)
+          || t.area.toLocaleString().includes(q);
+    }
+
+    function renderTenantTable(tableId, tenants, q) {
+      const tbody = document.querySelector('#' + tableId + ' tbody');
+      tbody.innerHTML = '';
+      const rows = tenants.filter(t => tenantMatches(t, q));
+      if (rows.length === 0) {
+        const tr = document.createElement('tr');
+        tr.className = 'tenant-empty';
+        tr.innerHTML = '<td colspan="3">No matching tenants</td>';
+        tbody.appendChild(tr);
+        return;
+      }
+      rows.forEach(t => {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          `<td>${t.name}</td>` +
+          `<td><span class="type-pill">${t.type}</span></td>` +
+          `<td>${t.area.toLocaleString()}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderTenants(p) {
+      const q = (document.getElementById('tenantSearch').value || '').trim().toLowerCase();
+      renderTenantTable('retailTable', p.retail.tenants, q);
+      renderTenantTable('officeTable', p.office.tenants, q);
+    }
+
+    /* ═══════ Render an entire project into the dashboard ═══════ */
+    function renderProject(p) {
+      const m = computeMetrics(p);
+
+      // Header: project name + address
+      document.getElementById('projectName').textContent = p.project;
+      document.getElementById('addressText').textContent = p.address;
+
+      // Property cards (GLA shown as-is; leased % derived from tenant areas)
+      document.getElementById('retailGLA').innerHTML = Math.round(m.retailGLA).toLocaleString() + ' <span class="kpi-unit">m²</span>';
+      document.getElementById('officeGLA').innerHTML = Math.round(m.officeGLA).toLocaleString() + ' <span class="kpi-unit">m²</span>';
+      document.getElementById('retailPct').textContent = Math.round(m.retailPct) + '%';
+      document.getElementById('officePct').textContent = Math.round(m.officePct) + '%';
+
+      // Progress bars — the CSS width transition animates the change
+      const retailBar = document.getElementById('retailBar');
+      const officeBar = document.getElementById('officeBar');
+      retailBar.dataset.target = Math.round(m.retailPct);
+      officeBar.dataset.target = Math.round(m.officePct);
+      requestAnimationFrame(() => {
+        retailBar.style.width = retailBar.dataset.target + '%';
+        officeBar.style.width = officeBar.dataset.target + '%';
+      });
+
+      // Portfolio Statistics ribbon (Total GLA · Leased · Vacant · Tenants)
+      document.getElementById('statTotalGLA').innerHTML = Math.round(m.totalGLA).toLocaleString() + ' <span class="kpi-unit">m²</span>';
+      document.getElementById('statLeased').innerHTML   = Math.round(m.totalLeased).toLocaleString() + ' <span class="kpi-unit">m²</span>';
+      document.getElementById('statVacant').innerHTML   = Math.round(m.totalVacant).toLocaleString() + ' <span class="kpi-unit">m²</span>';
+      document.getElementById('statTenants').textContent = m.totalTenants;
+
+      // Occupancy centrepiece — the hero % label + the 3D ring (or CSS fallback)
+      const leasedFraction = m.totalGLA ? (m.totalLeased / m.totalGLA) : 0;
+      document.getElementById('occPct').innerHTML = m.overallLeasedPct + '<span class="kpi-unit">%</span>';
+      const stageEl = document.getElementById('occupancyStage');
+      if (stageEl) stageEl.style.setProperty('--leased-turn', leasedFraction.toFixed(4) + 'turn');
+      if (occupancy) occupancy.update(leasedFraction);
+
+      // Leasing velocity (3-month daily average, per category)
+      const vel = computeVelocity(p);
+      const retailLabel = p.retail.label || 'Retail';
+      document.getElementById('retailVelLabel').textContent  = retailLabel;
+      document.getElementById('retailVelocity').textContent  = vel.retail.toFixed(1) + ' m²/day';
+      document.getElementById('officeVelocity').textContent  = vel.office.toFixed(1) + ' m²/day';
+      document.getElementById('overallVelocity').textContent = vel.overall.toFixed(1) + ' m²/day';
+
+      // Leased-area mini bar chart (by category)
+      if (leasedAreaChart) {
+        const la = leasedAreaByCategory(p);
+        leasedAreaChart.data.labels = [la.retailLabel, la.officeLabel];
+        leasedAreaChart.data.datasets[0].data = [Math.round(la.retail), Math.round(la.office)];
+        leasedAreaChart.update();
+      }
+
+      // Occupancy breakdown by tenant type
+      if (typeBreakdownChart) {
+        const bt = leasedAreaByType(p);
+        typeBreakdownChart.data.labels = bt.labels;
+        typeBreakdownChart.data.datasets[0].data = bt.values;
+        typeBreakdownChart.data.datasets[0].backgroundColor = bt.labels.map((_, i) => TYPE_COLORS[i % TYPE_COLORS.length]);
+        typeBreakdownChart.update();
+      }
+
+      // Tenant tables (honour whatever is typed in the search box)
+      renderTenants(p);
+
+      // Top Tenants glass plaques
+      renderTopTenants(p);
+
+      // Portfolio Occupancy by Building (data-driven; updates on project switch)
+      renderBuildingOccupancy(p);
+    }
+
+    /* ═══════════════════════════════════════════════════
+       OCCUPANCY CENTREPIECE (Three.js)
+       The signature visual: an extruded, beveled occupancy ring —
+       a leased arc (lilac) + a vacant arc (graphite) — floating freely above the
+       animated particle-wave field, under soft studio light. One renderer,
+       one scene, one camera. It is the most dynamic object on the page, but still
+       premium — a slow hover, a gentle oscillating turntable turn (never a
+       continuous spin), a subtle breathing scale and a slow lighting response;
+       plus a tiny camera drift. Pauses when the tab is hidden. The centre
+       "%" is a crisp HTML overlay, not rendered into the canvas, so it stays
+       razor-sharp at 4K. A CSS conic-gradient ring is shown until this mounts,
+       and remains as the fallback if WebGL/Three is unavailable.
+       ═══════════════════════════════════════════════════ */
+    /* Shared soft-studio environment for subtle, premium reflections on the 3D metals.
+       A dark vertical gradient (cool light from above → dark floor) turned into an
+       equirect map + PMREM cube. It is intentionally DARK, so it adds material realism
+       and edge sheen without brightening or glowing. Generated per renderer (env
+       textures are renderer-specific). Returns null if anything fails. */
+    function makeStudioEnvironment(renderer) {
+      try {
+        const c = document.createElement('canvas'); c.width = 64; c.height = 128;
+        const g = c.getContext('2d');
+        const grd = g.createLinearGradient(0, 0, 0, 128);
+        grd.addColorStop(0.00, '#3a373f');   // soft neutral key from above (graphite, faint purple)
+        grd.addColorStop(0.45, '#1a181e');
+        grd.addColorStop(1.00, '#0a090c');    // darker floor
+        g.fillStyle = grd; g.fillRect(0, 0, 64, 128);
+        const tex = new THREE.CanvasTexture(c);
+        tex.mapping = THREE.EquirectangularReflectionMapping;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        const env = pmrem.fromEquirectangular(tex).texture;
+        tex.dispose(); pmrem.dispose();
+        return env;
+      } catch (e) { return null; }
+    }
+
+    let occupancy = null;
+
+    function createOccupancyRing(container) {
+      try {
+        const scene = new THREE.Scene();
+
+        const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+        const camBase = new THREE.Vector3(0, 1.65, 6.3);
+        camera.position.copy(camBase);
+        camera.lookAt(0, 0.1, 0);
+
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); // cap 4K fill cost
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.08; /* calmer studio exposure — no blown highlights (brand: soft light) */
+        renderer.domElement.className = 'occupancy-canvas';
+        container.appendChild(renderer.domElement);
+
+        function size() {
+          const w = container.clientWidth || 320;
+          const h = container.clientHeight || 320;
+          renderer.setSize(w, h, false);
+          camera.aspect = w / h;
+          camera.updateProjectionMatrix();
+        }
+        size();
+
+        // ── Soft studio lighting + image-based reflections (richer material realism) ──
+        const env = makeStudioEnvironment(renderer);   // subtle IBL reflections on the metal
+        if (env) scene.environment = env;
+        scene.add(new THREE.AmbientLight(0x928e97, 0.7)); // env now provides soft fill
+        const key  = new THREE.DirectionalLight(0xffffff, 1.65); key.position.set(3, 6, 5);   scene.add(key);
+        const rim  = new THREE.DirectionalLight(0xb9a6d9, 0.55); rim.position.set(-4, 2, -3);  scene.add(rim);
+        const fill = new THREE.DirectionalLight(0xa39aa8, 0.38); fill.position.set(-2, -3, 4); scene.add(fill);
+
+        // ── One parent group holds the ENTIRE model (ring + shadow), so a
+        //    single fixed world-space scale sizes the whole composition coherently.
+        //    This scale is a constant — it is NEVER derived from container/window size. ──
+        const occupancyModelGroup = new THREE.Group();
+        occupancyModelGroup.scale.setScalar(0.82); // fixed ~18% reduction of the whole model
+        occupancyModelGroup.position.y = 0.1;       // lift ~12px so the ring hovers above the wave field
+        scene.add(occupancyModelGroup);
+
+        // ── Environmental purple bounce (NOT a glow): a soft, low point light beneath the
+        //    ring that simulates the muted-purple particle-wave field reflecting onto the
+        //    underside. Real geometry lighting → it only catches the lower rims/bevel and
+        //    can never extend outside the silhouette. Intensity + drift + colour are
+        //    animated slowly in the loop so it feels like the same environment as the waves. ──
+        const underColA = new THREE.Color(0x6d4f8f);   // darker muted purple
+        const underColB = new THREE.Color(0x9a86c4);   // lighter muted purple
+        const underLight = new THREE.PointLight(0x8764AB, 0.2, 6.0, 2.0); // intensity animated
+        underLight.position.set(0, -1.05, 0.8);        // below + slightly toward the viewer
+        occupancyModelGroup.add(underLight);
+
+        // ── The occupancy ring (tilted so its extruded depth reads architecturally) ──
+        const ring = new THREE.Group();
+        ring.rotation.x = -0.62;
+        occupancyModelGroup.add(ring);
+
+        const OUTER = 1.7, INNER = 1.04, DEPTH = 0.42;
+        // Leased arc: brushed-teal metal with a fine clearcoat sheen (premium finish).
+        const leasedMat = new THREE.MeshPhysicalMaterial({
+          color: 0xb9a6d9, metalness: 0.55, roughness: 0.3,
+          clearcoat: 0.16, clearcoatRoughness: 0.6, envMapIntensity: 0.7,
+          emissive: 0x160f1c, emissiveIntensity: 0.16
+        });
+        // Vacant arc: darker machined metal — catches just a hint of the studio env.
+        const vacantMat = new THREE.MeshPhysicalMaterial({
+          color: 0x322e3a, metalness: 0.62, roughness: 0.44,
+          clearcoat: 0.1, clearcoatRoughness: 0.7, envMapIntensity: 0.5
+        });
+
+        let leasedMesh = null, vacantMesh = null, leasedGeo = null, vacantGeo = null;
+
+        const extrudeOpts = {
+          depth: DEPTH, bevelEnabled: true, bevelThickness: 0.05,
+          bevelSize: 0.05, bevelSegments: 3, curveSegments: 100
+        };
+        // A partial annulus (ring sector) between angles a0..a1.
+        function sectorGeo(a0, a1) {
+          const shape = new THREE.Shape();
+          shape.absarc(0, 0, OUTER, a0, a1, false);
+          shape.absarc(0, 0, INNER, a1, a0, true);
+          shape.closePath();
+          const geo = new THREE.ExtrudeGeometry(shape, extrudeOpts);
+          geo.translate(0, 0, -DEPTH / 2);
+          return geo;
+        }
+        // A full annulus (used for the 0% / 100% edge cases).
+        function fullAnnulusGeo() {
+          const shape = new THREE.Shape();
+          shape.absarc(0, 0, OUTER, 0, Math.PI * 2, false);
+          const hole = new THREE.Path();
+          hole.absarc(0, 0, INNER, 0, Math.PI * 2, true);
+          shape.holes.push(hole);
+          const geo = new THREE.ExtrudeGeometry(shape, extrudeOpts);
+          geo.translate(0, 0, -DEPTH / 2);
+          return geo;
+        }
+
+        function buildArcs(frac) {
+          frac = Math.max(0, Math.min(1, frac));
+          if (leasedMesh) { ring.remove(leasedMesh); leasedGeo.dispose(); leasedMesh = leasedGeo = null; }
+          if (vacantMesh) { ring.remove(vacantMesh); vacantGeo.dispose(); vacantMesh = vacantGeo = null; }
+          const TOP = Math.PI / 2;                 // start at 12 o'clock
+          const sweep = frac * Math.PI * 2;
+          const gap = (frac > 0.002 && frac < 0.998) ? 0.05 : 0; // subtle seam between segments
+          if (frac >= 0.998) {                     // fully leased
+            leasedGeo = fullAnnulusGeo();
+            leasedMesh = new THREE.Mesh(leasedGeo, leasedMat); ring.add(leasedMesh);
+          } else if (frac <= 0.002) {              // fully vacant
+            vacantGeo = fullAnnulusGeo();
+            vacantMesh = new THREE.Mesh(vacantGeo, vacantMat); ring.add(vacantMesh);
+          } else {                                 // leased sweeps clockwise from the top
+            leasedGeo = sectorGeo(TOP - sweep + gap, TOP);
+            leasedMesh = new THREE.Mesh(leasedGeo, leasedMat); ring.add(leasedMesh);
+            vacantGeo = sectorGeo(TOP - Math.PI * 2, TOP - sweep - gap);
+            vacantMesh = new THREE.Mesh(vacantGeo, vacantMat); ring.add(vacantMesh);
+          }
+        }
+        buildArcs(0.5);
+
+        // ── Pedestal REMOVED ──────────────────────────────────────────────
+        // The former "museum-plinth" (three stacked dark CylinderGeometry platforms,
+        // radius up to 2.44, near-black graphite) was the solid dark ELLIPSE beneath the
+        // ring: from the raised, angled camera it projected as a black oval that read as
+        // a pedestal. It has been deleted entirely, so the ring now floats directly above
+        // the animated particle-wave field. The only thing left below is the ~5% whisper
+        // contact shadow (below) for a faint depth cue.
+
+        // ── Whisper contact shadow (radial-gradient sprite; no shadow maps). ~5% core,
+        //    heavily feathered — a barely-there depth cue below the floating ring, NOT a
+        //    platform. If it's noticed before the floating ring, it's still too strong. ──
+        const shC = document.createElement('canvas'); shC.width = shC.height = 128;
+        const shG = shC.getContext('2d');
+        const grd = shG.createRadialGradient(64, 64, 1, 64, 64, 64);
+        grd.addColorStop(0.0,  'rgba(0,0,0,0.05)');   // ~5% whisper core (was 0.62 originally)
+        grd.addColorStop(0.26, 'rgba(0,0,0,0.02)');
+        grd.addColorStop(0.55, 'rgba(0,0,0,0.006)');  // dissolves almost immediately
+        grd.addColorStop(1.0,  'rgba(0,0,0,0)');
+        shG.fillStyle = grd; shG.fillRect(0, 0, 128, 128);
+        const shTex = new THREE.CanvasTexture(shC);
+        const shadow = new THREE.Mesh(
+          new THREE.PlaneGeometry(2.8, 2.8),          // small, soft footprint
+          new THREE.MeshBasicMaterial({ map: shTex, transparent: true, depthWrite: false })
+        );
+        shadow.rotation.x = -Math.PI / 2;
+        shadow.position.y = -1.4;                     // soft ground cue below the floating ring
+        occupancyModelGroup.add(shadow);
+
+        // ── Showroom motion — the hero is the most dynamic object on the page, but
+        //    still premium: a slow hover, a gentle turntable turn
+        //    (oscillating, NEVER a continuous spin), a faint tilt, a subtle breathing
+        //    scale around the FIXED base scale (time-based, so it never reintroduces
+        //    the refresh-size drift the constant 0.82 guards against), and a slow
+        //    lighting response. Nothing bounces or wobbles. Pauses when hidden. ──
+        const BASE_SCALE = 0.82;                 // constant reference — never derived from size
+        const keyBase = key.intensity, rimBase = rim.intensity;
+        let raf, disposed = false;
+        (function animate() {
+          raf = requestAnimationFrame(animate);
+          if (disposed || document.hidden) return;
+          const t = Date.now() * 0.001;
+          ring.position.y = 0.12 + Math.sin(t * 0.55) * 0.06;               // deeper slow hover
+          occupancyModelGroup.rotation.y = Math.sin(t * 0.3) * 0.08;        // ±~4.6° slow turntable
+          occupancyModelGroup.rotation.z = Math.sin(t * 0.22) * 0.012;      // faint tilt variation
+          const breathe = 1 + (Math.sin(t * 0.4) * 0.5 + 0.5) * 0.02;       // 1.00 → 1.02 breathing
+          occupancyModelGroup.scale.setScalar(BASE_SCALE * breathe);
+          key.intensity = keyBase * (1 + Math.sin(t * 0.35) * 0.06);        // slow lighting response
+          rim.intensity = rimBase * (1 + Math.sin(t * 0.28 + 1.5) * 0.10);
+          // Environmental purple bounce from the wave field: soft, slow variation in
+          // intensity, position and colour so the underside feels lit by the same
+          // moving environment — never a glow, never brighter than the front face.
+          underLight.intensity = 0.2 + Math.sin(t * 0.5) * 0.08;            // ~0.12–0.28, very soft
+          underLight.position.x = Math.sin(t * 0.33) * 0.5;                 // gentle lateral drift
+          underLight.color.copy(underColA).lerp(underColB, Math.sin(t * 0.24) * 0.5 + 0.5); // darker↔lighter purple
+          camera.position.x = camBase.x + Math.sin(t * 0.22) * 0.16;
+          camera.position.y = camBase.y + Math.sin(t * 0.17) * 0.09;
+          camera.lookAt(0, 0.1, 0);
+          renderer.render(scene, camera);
+        })();
+
+        // Keep the drawing-buffer matched to the CSS-controlled canvas box. A
+        // ResizeObserver also fires once layout settles, so the buffer is crisp on the
+        // first paint regardless of load timing. It ONLY updates renderer size + camera
+        // aspect + projection matrix — never the model scale, camera distance or geometry.
+        let ro = null;
+        const onResize = () => size();
+        if (typeof ResizeObserver !== 'undefined') {
+          ro = new ResizeObserver(onResize);
+          ro.observe(container);
+        } else {
+          window.addEventListener('resize', onResize);
+        }
+
+        return {
+          update(frac) { buildArcs(frac); },
+          resize: size,
+          dispose() {
+            disposed = true;
+            cancelAnimationFrame(raf);
+            if (ro) ro.disconnect(); else window.removeEventListener('resize', onResize);
+            if (leasedGeo) leasedGeo.dispose();
+            if (vacantGeo) vacantGeo.dispose();
+            leasedMat.dispose(); vacantMat.dispose(); shTex.dispose();
+            if (env) env.dispose();
+            renderer.dispose();
+            if (renderer.forceContextLoss) renderer.forceContextLoss();
+            if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
+          }
+        };
+      } catch (e) { console.warn('occupancy centrepiece init failed:', e); return null; }
+    }
+
+    // Mount the centrepiece once Three.js is ready, then paint the live value.
+    function initOccupancyCentrepiece() {
+      if (occupancy || typeof THREE === 'undefined') return; // one renderer/scene/loop only
+      const stage = document.getElementById('occupancyStage');
+      if (!stage) return;
+      // Idempotency: remove any stale renderer canvas from a previous init before rebuilding.
+      stage.querySelectorAll('canvas.occupancy-canvas').forEach(c => c.remove());
+      occupancy = createOccupancyRing(stage);
+      if (occupancy) {
+        stage.classList.add('has-3d'); // hides the CSS fallback ring
+        const m = computeMetrics(projects[currentIndex]);
+        occupancy.update(m.totalGLA ? (m.totalLeased / m.totalGLA) : 0);
+      }
+    }
+
+    /* ═══════ Leased Area by Category — mini horizontal bar ═══════ */
+    const laCtx = document.getElementById('leasedAreaChart').getContext('2d');
+    const la0 = leasedAreaByCategory(projects[0]);
+    let leasedAreaChart = (typeof Chart === 'undefined') ? null : new Chart(laCtx, {
+      type: 'bar',
+      data: {
+        labels: [la0.retailLabel, la0.officeLabel],
+        datasets: [{
+          data: [Math.round(la0.retail), Math.round(la0.office)],
+          backgroundColor: ['#b9a6d9', '#8764AB'], // light lilac = retail/commercial, brand purple = offices
+          hoverBackgroundColor: ['#c9bce4', '#9a7cc0'],
+          borderWidth: 0,
+          borderRadius: 3,
+          barThickness: 18,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2), // render buffer at device resolution (crisp labels)
+        layout: { padding: { right: 8 } },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(13, 12, 16, 0.96)',
+            titleFont: { family: 'Hanken Grotesk', weight: '600', size: 12 },
+            bodyFont:  { family: 'Hanken Grotesk', weight: '500', size: 12 },
+            padding: 10,
+            cornerRadius: 6,
+            callbacks: { label: c => ' ' + c.parsed.x.toLocaleString() + ' m²' }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: {
+              color: '#847f8c',
+              font: { family: 'Hanken Grotesk', size: 11 },
+              callback: v => (v >= 1000 ? (v / 1000) + 'k' : v)
+            }
+          },
+          y: {
+            grid: { display: false },
+            ticks: { color: '#d8d6dc', font: { family: 'Hanken Grotesk', size: 12, weight: '600' } }
+          }
+        },
+        animation: { duration: 600 }
+      }
+    });
+
+    /* ═══════ Occupancy Breakdown by tenant type — mini horizontal bar ═══════ */
+    const btCtx = document.getElementById('typeBreakdownChart').getContext('2d');
+    const bt0 = leasedAreaByType(projects[0]);
+    let typeBreakdownChart = (typeof Chart === 'undefined') ? null : new Chart(btCtx, {
+      type: 'bar',
+      data: {
+        labels: bt0.labels,
+        datasets: [{
+          data: bt0.values,
+          backgroundColor: bt0.labels.map((_, i) => TYPE_COLORS[i % TYPE_COLORS.length]),
+          borderWidth: 0,
+          borderRadius: 3,
+          barThickness: 14,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2), // render buffer at device resolution (crisp labels)
+        layout: { padding: { right: 8 } },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(13, 12, 16, 0.96)',
+            titleFont: { family: 'Hanken Grotesk', weight: '600', size: 12 },
+            bodyFont:  { family: 'Hanken Grotesk', weight: '500', size: 12 },
+            padding: 10,
+            cornerRadius: 6,
+            callbacks: { label: c => ' ' + c.parsed.x.toLocaleString() + ' m²' }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: {
+              color: '#847f8c',
+              font: { family: 'Hanken Grotesk', size: 11 },
+              callback: v => (v >= 1000 ? (v / 1000) + 'k' : v)
+            }
+          },
+          y: {
+            grid: { display: false },
+            ticks: { color: '#d8d6dc', font: { family: 'Hanken Grotesk', size: 11, weight: '600' } }
+          }
+        },
+        animation: { duration: 600 }
+      }
+    });
+
+    /* ═══════ Clock — ticks every second ═══════ */
+    function updateClock() {
+      const now = new Date();
+      const dateOpts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+      document.getElementById('currentDate').textContent = now.toLocaleDateString('en-US', dateOpts);
+      document.getElementById('currentTime').textContent = now.toLocaleTimeString('en-US', {
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+      });
+    }
+
+    /* ═══════ "Last Updated" — exact date & time of the last refresh ═══════ */
+    function stampLastUpdated() {
+      const now = new Date();
+      document.getElementById('lastUpdated').textContent = now.toLocaleString('en-US', {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+      });
+    }
+
+    /* ═══════ Simulated tenant refresh ═══════
+       A real deployment might re-check every 5 days; for the demo we check
+       every 30 seconds. Each check re-syncs the tenant list and stamps the
+       "Last Updated" time. */
+    const REFRESH_INTERVAL = 30 * 1000;
+    function simulateRefresh() {
+      renderTenants(projects[currentIndex]);
+      stampLastUpdated();
+    }
+
+    /* ═══════ Live tenant search ═══════ */
+    document.getElementById('tenantSearch').addEventListener('input', () => {
+      renderTenants(projects[currentIndex]);
+    });
+
+    /* ═══════════════════════════════════════════════════
+       IDLE / TENANT AUTO-PAGING (TV) MODE
+       After IDLE_TIMEOUT with no interaction, the Tenant Directory pages to the
+       next group of tenants every PAGE_INTERVAL. Projects are NEVER switched
+       automatically — only the tenant list moves. Any user interaction stops
+       paging and resets the idle timer. Nothing here reloads the page.
+       ═══════════════════════════════════════════════════ */
+    const IDLE_TIMEOUT  = 10 * 60 * 1000; // 10 minutes of no interaction
+    const PAGE_INTERVAL = 20 * 1000;      // page the tenant list every 20 seconds
+    let idleTimer   = null;
+    let pagingTimer = null;
+    let isPaging    = false;
+    let suppressScrollDetection = false;  // true while our own auto-scroll runs
+    let suppressTimer = null;
+
+    /* ═══════ Project selector tabs ═══════
+       Tabs are built from the projects array, so adding another project object
+       automatically adds another tab — no page changes required. */
+    function renderTabs() {
+      const nav = document.getElementById('projectTabs');
+      nav.innerHTML = '';
+      projects.forEach((p, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'project-tab' + (i === currentIndex ? ' active' : '');
+        btn.textContent = p.project;
+        btn.dataset.index = i;
+        btn.addEventListener('click', () => {
+          if (i !== currentIndex) switchProject(i); // instant data switch, no reload
+        });
+        nav.appendChild(btn);
+      });
+    }
+
+    function updateActiveTab(index) {
+      document.querySelectorAll('.project-tab').forEach(btn => {
+        btn.classList.toggle('active', Number(btn.dataset.index) === index);
+      });
+    }
+
+    // Switch to a project with a smooth ~300ms fade (no page reload).
+    function switchProject(index, animate = true) {
+      const main = document.querySelector('.main');
+      updateActiveTab(index);                             // instant tab highlight
+      const swap = () => { currentIndex = index; renderProject(projects[index]); };
+      if (!animate) { swap(); return; }
+      main.classList.add('is-switching');                 // fade out
+      setTimeout(() => {
+        swap();
+        requestAnimationFrame(() => main.classList.remove('is-switching')); // fade in
+      }, 450); // match the heavier 0.45s cross-fade so the swap lands fully faded
+    }
+
+    /* ═══════ Idle tenant auto-paging ═══════
+       Only the Tenant Directory scrolls; the rest of the dashboard stays fixed
+       and the selected project never changes. */
+    function tenantScroller() {
+      return document.querySelector('.tenant-card .card-body');
+    }
+
+    function pageTenants() {
+      const el = tenantScroller();
+      if (!el) return;
+      const step = Math.max(0, el.clientHeight - 24);       // one viewport, slight overlap
+      const maxTop = el.scrollHeight - el.clientHeight;
+      if (maxTop <= 0) return;                              // nothing to page through
+      // Advance a page; loop back to the top once the end is reached.
+      const nextTop = (el.scrollTop >= maxTop - 4) ? 0 : Math.min(el.scrollTop + step, maxTop);
+      // Flag this programmatic scroll so it isn't mistaken for user activity.
+      suppressScrollDetection = true;
+      clearTimeout(suppressTimer);
+      suppressTimer = setTimeout(() => { suppressScrollDetection = false; }, 1500);
+      el.scrollTo({ top: nextTop, behavior: 'smooth' });
+    }
+
+    function startTenantPaging() {
+      if (isPaging) return;
+      isPaging = true;
+      document.getElementById('presentationBadge').style.display = 'flex';
+      pagingTimer = setInterval(pageTenants, PAGE_INTERVAL);
+    }
+
+    function stopTenantPaging() {
+      if (!isPaging) return;
+      isPaging = false;
+      clearInterval(pagingTimer);
+      pagingTimer = null;
+      document.getElementById('presentationBadge').style.display = 'none';
+    }
+
+    // Any real interaction stops auto-paging and rearms the idle timer. Our own
+    // auto-scroll is ignored (suppressScrollDetection) so it can't cancel
+    // itself. Projects are never switched automatically here.
+    function onUserActivity(e) {
+      if (e && e.type === 'scroll' && suppressScrollDetection) return;
+      stopTenantPaging();
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(startTenantPaging, IDLE_TIMEOUT);
+    }
+
+    // capture:true also catches scrolling inside the tenant list (element
+    // scroll doesn't bubble to window), so manual scrolling counts as activity.
+    ['mousemove', 'mousedown', 'click', 'keydown', 'wheel', 'touchstart', 'scroll'].forEach(evt => {
+      window.addEventListener(evt, onUserActivity, { passive: true, capture: true });
+    });
+
+    /* Header brand lockup is now a flat SVG (page-3.svg) in the header markup —
+       the former Three.js brand-lockup renderer was removed. */
+
+    /* ═══════ Fit the 1920×1080 design to any 16:9 display (NATIVE scaling) ═══════
+       Uniform scale = min(width/1920, height/1080), applied by setting the ROOT
+       font-size to 16×scale. The whole dashboard is authored in `rem`, so this resizes
+       the identical, balanced composition from 1080p → 4K through real CSS lengths —
+       text/charts/vectors render at true device resolution (no transform rasterization,
+       so no blur), never reflowed.
+
+       Browser-zoom safe: Ctrl +/-/0 also fire a 'resize' event and shrink/grow the CSS
+       viewport, so blindly re-fitting on every resize would immediately cancel the user's
+       zoom (the classic "zoom does nothing" bug). Browser zoom changes
+       window.devicePixelRatio, whereas dragging the window does not — so we re-fit only
+       on genuine window resizes and leave the root font-size untouched during zoom,
+       letting the browser scale normally. Fitting runs on load + real resizes only —
+       never in a render/animation loop. */
+    let _fitDPR = window.devicePixelRatio;
+    function fitDashboard() {
+      // NATIVE scaling (replaces the old transform: scale, which rasterized then upscaled
+      // the whole dashboard → blurry text at non-1:1 fits). The layout is authored in
+      // `rem` (1rem = 16px at the 1920×1080 reference), so scaling the ROOT font-size by
+      // `fit` resizes the entire composition through real CSS lengths — text, charts and
+      // vectors render at true device resolution. The 16:9 proportions are preserved
+      // exactly (uniform scale); nothing reflows.
+      const s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+      document.documentElement.style.fontSize = (16 * s) + 'px';
+    }
+    function onWindowResize() {
+      // A devicePixelRatio change means the user zoomed (or changed monitor DPI):
+      // do NOT re-fit, so browser zoom stays fully effective.
+      if (window.devicePixelRatio !== _fitDPR) {
+        _fitDPR = window.devicePixelRatio;
+        return;
+      }
+      fitDashboard(); // genuine window resize → re-fit
+    }
+    window.addEventListener('resize', onWindowResize);
+
+    /* Pause the continuous CSS panel float while the tab is hidden — a body class
+       flips `animation-play-state: paused` (the Three.js loops already bail on
+       document.hidden). Keeps a background tab from spending GPU on motion. */
+    document.addEventListener('visibilitychange', () => {
+      document.body.classList.toggle('anim-paused', document.hidden);
+    }, { passive: true });
+
+    /* ═══════════════════════════════════════════════════
+       INIT
+       ═══════════════════════════════════════════════════ */
+    fitDashboard();                        // scale the composition (root font-size) to the display
+    // Re-apply once the brand font is loaded so any font-metric-dependent layout is
+    // measured with Hanken Grotesk, not the fallback (#10). Cheap; no visual change at 1:1.
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitDashboard);
+    assignMockLeaseDates();                // fill mock leaseDates (Monday.com-ready)
+    renderTabs();                          // build the project selector tabs
+    renderProject(projects[currentIndex]); // initial paint (Business Address)
+    renderPerformanceSummary();            // trend ribbon (mock; Monday.com-ready)
+    /* ═══════════════════════════════════════════════════
+       PARTICLE-WAVE BACKGROUND (Three.js)
+       One scene / camera / renderer / Points object / loop. ~28k points on a fixed
+       X-Z grid; the Y displacement is computed on the GPU in the vertex shader from
+       layered sine waves, so the whole surface flows as one continuous field for a
+       single draw call. Muted-purple beads (soft circular alpha via gl_PointCoord),
+       coloured lavender at the peaks and dark purple in the troughs, faded by depth.
+       The camera looks across the surface at a shallow diagonal (asymmetric, like the
+       reference). Pauses when the tab is hidden; a single static frame under
+       prefers-reduced-motion; graceful CSS-ground fallback if WebGL is unavailable.
+       Fully independent of renderProject/switchProject, so it never resets on switch. */
+    let waveBg = null;
+    function initWaveBackground() {
+      if (waveBg || typeof THREE === 'undefined') return;   // one instance only
+      const canvas = document.getElementById('waveBackgroundCanvas');
+      if (!canvas) return;
+      try {
+        const scene  = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 400);
+        const camBase = new THREE.Vector3(-6, 12, 26);       // above + offset left
+        const lookTarget = new THREE.Vector3(4, -3, -18);    // diagonal → asymmetric
+        camera.position.copy(camBase);
+        camera.lookAt(lookTarget);
+
+        const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+        const PR = Math.min(window.devicePixelRatio || 1, 1.5);   // cap 4K fill cost
+        renderer.setPixelRatio(PR);
+        renderer.setSize(window.innerWidth, window.innerHeight, false); // CSS owns display size
+        renderer.setClearColor(0x000000, 0);                 // transparent → CSS ground shows
+
+        // ── Grid of points (fixed X/Z; Y animated in the shader) ──
+        const COLS = 220, ROWS = 130;            // ≈ 28,600 points
+        const GW = 120, GD = 82;                 // grid width (x) / depth (z)
+        const count = COLS * ROWS;
+        const positions = new Float32Array(count * 3);
+        const aRand = new Float32Array(count);   // tiny per-point variation (size/tint)
+        let p = 0;
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            positions[p * 3]     = (c / (COLS - 1) - 0.5) * GW;       // x
+            positions[p * 3 + 1] = 0;                                 // y (shader)
+            positions[p * 3 + 2] = 10 - (r / (ROWS - 1)) * GD;        // z: +10 near → -72 far
+            aRand[p] = Math.abs(Math.sin(c * 12.9898 + r * 78.233) * 43758.5453) % 1;
+            p++;
+          }
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geo.setAttribute('aRand', new THREE.BufferAttribute(aRand, 1));
+
+        const uniforms = {
+          uTime:       { value: 0 },
+          uSize:       { value: 5.2 },
+          uPixelRatio: { value: PR },
+          uColorLow:   { value: new THREE.Color(0x30244a) },  // dark muted purple (troughs / far)
+          uColorHigh:  { value: new THREE.Color(0xc6b6e2) },  // pale lavender (peaks / near)
+        };
+
+        const material = new THREE.ShaderMaterial({
+          uniforms,
+          transparent: true,
+          depthWrite: false,
+          depthTest: false,
+          blending: THREE.NormalBlending,
+          vertexShader: `
+            uniform float uTime;
+            uniform float uSize;
+            uniform float uPixelRatio;
+            attribute float aRand;
+            varying float vFade;
+            varying float vHeight;
+            varying float vRand;
+            void main() {
+              vec3 pos = position;
+              float x = pos.x, z = pos.z;
+              // Layered waves: broad slow swell + secondary ripples + cross term.
+              float y =
+                  sin(x * 0.11 + uTime * 0.55) * 2.1
+                + cos(z * 0.14 + uTime * 0.40) * 1.7
+                + sin((x + z) * 0.08 + uTime * 0.30) * 1.3
+                + sin((x * 0.05 - z * 0.10) + uTime * 0.20) * 0.9;
+              pos.y = y;
+              vHeight = y;
+              vRand = aRand;
+              vec4 mv = modelViewMatrix * vec4(pos, 1.0);
+              gl_Position = projectionMatrix * mv;
+              float dist = -mv.z;                                  // view-space depth
+              gl_PointSize = uSize * uPixelRatio * (34.0 / dist) * (0.7 + aRand * 0.5);
+              vFade = clamp(1.0 - (dist - 12.0) / 64.0, 0.10, 1.0); // farther = dimmer
+            }
+          `,
+          fragmentShader: `
+            uniform vec3 uColorLow;
+            uniform vec3 uColorHigh;
+            varying float vFade;
+            varying float vHeight;
+            varying float vRand;
+            void main() {
+              vec2 cc = gl_PointCoord - vec2(0.5);
+              float d = length(cc);
+              if (d > 0.5) discard;                    // circular bead
+              float alpha = smoothstep(0.5, 0.12, d);  // soft edge
+              float h = clamp((vHeight + 3.5) / 7.0, 0.0, 1.0);
+              vec3 col = mix(uColorLow, uColorHigh, h * 0.75 + vRand * 0.10);
+              gl_FragColor = vec4(col, alpha * vFade * 0.85);
+            }
+          `,
+        });
+
+        const points = new THREE.Points(geo, material);
+        scene.add(points);
+
+        const reduceMotion = window.matchMedia &&
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const finePointer = window.matchMedia &&
+          window.matchMedia('(pointer: fine)').matches;
+
+        // Restrained pointer parallax (desktop only; TVs have no fine pointer).
+        let tpx = 0, tpy = 0, px = 0, py = 0;
+        if (finePointer) {
+          window.addEventListener('pointermove', (e) => {
+            tpx = (e.clientX / window.innerWidth) - 0.5;
+            tpy = (e.clientY / window.innerHeight) - 0.5;
+          }, { passive: true });
+        }
+
+        function draw() {
+          const t = performance.now() * 0.001;
+          uniforms.uTime.value = t;
+          px += (tpx - px) * 0.03;  py += (tpy - py) * 0.03;   // smooth follow
+          camera.position.x = camBase.x + Math.sin(t * 0.05) * 2.4 + px * 3.0; // slow drift + parallax
+          camera.position.y = camBase.y + Math.sin(t * 0.037) * 1.1 - py * 1.6;
+          camera.lookAt(lookTarget);
+          renderer.render(scene, camera);
+        }
+
+        let raf, disposed = false;
+        function animate() {
+          raf = requestAnimationFrame(animate);
+          if (disposed || document.hidden) return;   // pause when tab hidden
+          draw();
+        }
+        if (reduceMotion) draw();                     // single static frame, no loop
+        else animate();
+
+        // Resize: update buffer + aspect only (never recreate geometry).
+        const onResize = () => {
+          renderer.setSize(window.innerWidth, window.innerHeight, false);
+          camera.aspect = window.innerWidth / window.innerHeight;
+          camera.updateProjectionMatrix();
+        };
+        window.addEventListener('resize', onResize);
+
+        waveBg = {
+          dispose() {
+            disposed = true;
+            cancelAnimationFrame(raf);
+            window.removeEventListener('resize', onResize);
+            geo.dispose(); material.dispose(); renderer.dispose();
+            if (renderer.forceContextLoss) renderer.forceContextLoss();
+          }
+        };
+      } catch (e) {
+        // WebGL/shader failure → the CSS ground on .wave-background stays visible.
+        console.warn('wave background init failed:', e);
+      }
+    }
+
+    // Three.js visuals load asynchronously (ESM module) — mount them once ready.
+    function initThreeVisuals() {
+      initWaveBackground();                     // full-screen particle-wave background
+      initOccupancyCentrepiece();               // mount the signature 3D occupancy model
+      renderTopTenants(projects[currentIndex]); // re-mount plaques with 3D medallions
+    }
+    if (typeof THREE !== 'undefined') initThreeVisuals();
+    else window.addEventListener('three-ready', initThreeVisuals, { once: true });
+    updateClock();
+    stampLastUpdated();
+    setInterval(updateClock, 1000);
+    setInterval(simulateRefresh, REFRESH_INTERVAL);
+    onUserActivity();                      // arm the 10-minute idle timer
+  </script>
+</body>
+</html>
