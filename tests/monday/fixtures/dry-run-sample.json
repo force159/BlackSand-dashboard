@@ -1,0 +1,38 @@
+{
+  "_comment": "OFFLINE sanitized fixture for `npm run monday:dry-run` when no real mapping/credentials exist. Board keys + column ids match config/monday-mapping.example.json placeholders. This is synthetic test input, NOT a captured Monday response, and contains no real tenant or personal data.",
+  "<business-address-board-id>": {
+    "id": "<business-address-board-id>",
+    "name": "Business Address (sample)",
+    "complete": true,
+    "items": [
+      { "id": "ba-1", "name": "Sample Retail A", "updated_at": "2026-07-01T00:00:00Z", "column_values": [
+        { "id": "<tenant-name-column-id>", "type": "text", "text": "Sample Retail A" },
+        { "id": "<category-column-id>", "type": "status", "text": "Retail" },
+        { "id": "<area-column-id>", "type": "numbers", "text": "150" },
+        { "id": "<lease-date-column-id>", "type": "date", "value": "{\"date\":\"2026-05-01\"}" },
+        { "id": "<status-column-id>", "type": "status", "text": "Active" }
+      ] },
+      { "id": "ba-2", "name": "Sample Office B", "updated_at": "2026-07-01T00:00:00Z", "column_values": [
+        { "id": "<tenant-name-column-id>", "type": "text", "text": "Sample Office B" },
+        { "id": "<category-column-id>", "type": "status", "text": "Offices" },
+        { "id": "<area-column-id>", "type": "numbers", "text": "500" },
+        { "id": "<lease-date-column-id>", "type": "date", "value": "{\"date\":\"2026-04-01\"}" },
+        { "id": "<status-column-id>", "type": "status", "text": "Active" }
+      ] }
+    ]
+  },
+  "<town-center-board-id>": {
+    "id": "<town-center-board-id>",
+    "name": "Town Center (sample)",
+    "complete": true,
+    "items": [
+      { "id": "tc-1", "name": "Sample Commercial A", "updated_at": "2026-07-01T00:00:00Z", "column_values": [
+        { "id": "<tenant-name-column-id>", "type": "text", "text": "Sample Commercial A" },
+        { "id": "<category-column-id>", "type": "status", "text": "Commercial" },
+        { "id": "<area-column-id>", "type": "numbers", "text": "300" },
+        { "id": "<lease-date-column-id>", "type": "date", "value": "{\"date\":\"2026-03-01\"}" },
+        { "id": "<status-column-id>", "type": "status", "text": "Active" }
+      ] }
+    ]
+  }
+}
