@@ -2592,3 +2592,60 @@ disposable DB copy, `NODE_ENV=production`): valid config → enriched `/health` 
 console + `logs/dashboard.log`; an invalid `TIMEZONE=UTC` **aborts** with a clear FATAL
 message and never serves. No regressions to the historical dashboard, executive summaries,
 comparisons, scheduler, historical APIs, Monday sync, or the frontend.
+
+---
+
+## 42. PHASE 9.4B — FINAL QA & VERSION 1.0.0 CERTIFICATION
+
+> **Status: complete — v1.0.0 certified, tag NOT yet created (awaiting approval).** A
+> verification-only phase: NO new features, NO architecture/logic/snapshot/analytics change.
+> All evidence was gathered against a DISPOSABLE COPY of the live database; the real DB was
+> never modified. No production defect required fixing. Full evidence: `RELEASE_CHECKLIST.md`.
+
+### 42.1 Regression (Part 1)
+`npm test` → **282/282** pass, 0 failures (seed 28, api 11, frontend 71, production 14,
+monday 49, history 109). `npm run verify` all stages green. `npm run lint` clean (127 files).
+Migrations: fresh → schema v6 + idempotent re-run; v4→v6 upgrade preserves data (history
+migration suite).
+
+### 42.2 End-to-end (Part 2) & production scenarios (Part 3)
+Live dry-run → snapshot → stored → dashboard (2 projects, live) → comparison → executive
+summary → charts → **restart preserves data** (identical `dataVersion`) → **scheduler
+resumes**. Fresh install auto-seeds (117 records); v4→v6 upgrade safe; invalid config and
+unwritable DB **fail closed**; Monday-unavailable handled (offline fixture + 401 fast-fail);
+network interruption → frontend degraded/retry (client tests).
+
+### 42.3 Performance (Part 4)
+Startup → `/health` ready ~1.3 s; API endpoints < 6 ms (`/api/dashboard` ~3.7 ms,
+executive-summary ~5.7 ms); snapshot capture a few ms/project; memory ~59 MB RSS idle, CPU
+~0.31 s. Monday live dry-run of both boards (full pipeline) completes in a few seconds,
+network-bound, zero writes.
+
+### 42.4 Reliability (Part 5)
+3 repeated snapshot runs → all `duplicate_skipped`, no new rows, `integrity_check = ok`,
+`foreign_key_check` = 0. Graceful shutdown is code-implemented + CP7/`awaitIdle` test-covered;
+SIGINT/SIGTERM (PM2/Linux) trigger it — a Windows hard `taskkill /F` bypasses it (OS limit).
+
+### 42.5 Security (Part 6)
+No tracked secrets; private paths → 404; unknown `/api` → JSON 404; bad input → 400 with
+generic messages (no stack/path/SQL); safe headers present; `x-powered-by` removed; no debug
+routes; secrets redacted from logs; production config fails closed.
+
+### 42.6 Monday certification (read-only, live)
+`monday:mapping:check` (production) OK; `monday:mapping:validate-live` OK (both boards active,
+columns resolve); live dry-run TC 129/72-active, BA 40/20-active, 0 warnings, candidate
+`dataVersion 86441bbea561` == the stored SQLite value (consistent). ZERO writes; the server
+never auto-syncs.
+
+### 42.7 Bug review (Part 9) & version (Part 10)
+Critical 0 · Major 0 · Minor 0 · Cosmetic 1 (`.env` uses the deprecated `MONDAY_API_TOKEN`
+alias → a one-time value-free warning; rename to `MONDAY_API_KEY` to silence — not a code
+defect). No Critical/Major → release not blocked. `package.json` is already `1.0.0`; README
+notes the version; `CHANGELOG.md` + `RELEASE_CHECKLIST.md` added. Documentation reviewed
+(Part 7): README (incl. an environment-variables table + production section),
+DEPLOYMENT_CHECKLIST, CHANGELOG, .env.example, CLAUDE §§1–42 — complete.
+
+### 42.8 Outcome
+All acceptance criteria met. **v1.0.0 is ready.** The `v1.0.0` tag is prepared but was NOT
+created or pushed — per the phase instruction, stop and await explicit user approval before
+creating/pushing the release tag.

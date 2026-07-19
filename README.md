@@ -1,5 +1,8 @@
 # BlackSand Executive Leasing Dashboard
 
+**Version 1.0.0** — production-ready (see `CHANGELOG.md`, `RELEASE_CHECKLIST.md`, and
+`DEPLOYMENT_CHECKLIST.md`).
+
 ## Project overview
 
 The **BlackSand executive real-estate leasing dashboard** is a single-screen, always-on
@@ -429,6 +432,27 @@ npm run lint  # dependency-free syntax gate over all project .js
 npm run backup / npm run restore   # see above
 npm run verify# consolidated non-destructive checks + all test suites
 ```
+
+### Environment variables
+
+All are optional (sensible defaults apply); set them in `.env` (never commit it). In
+**production** an invalid value aborts startup with a clear message.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `NODE_ENV` | `development` | `production` makes config validation strict (fail-closed). |
+| `PORT` | `3000` | HTTP port. |
+| `HOST` | `0.0.0.0` | Bind address (LAN-reachable for TVs). |
+| `LOG_LEVEL` | `info` (prod) / `debug` (dev) | `error` \| `warn` \| `info` \| `debug`. |
+| `SQLITE_DB_PATH` | `data/dashboard.db` | DB file (relative → project root). Alias: `DATABASE_PATH`. |
+| `HISTORY_SNAPSHOT_TIME` | `02:00` | Daily snapshot time (Riyadh). Alias: `SNAPSHOT_SCHEDULE`. |
+| `HISTORY_TIMEZONE` | `Asia/Riyadh` | Scheduler timezone (must be Asia/Riyadh). Alias: `TIMEZONE`. |
+| `HISTORY_AUTOMATION_ENABLED` | `true` | Daily snapshot scheduler on/off. |
+| `MONDAY_API_KEY` | — | Monday token (secret; env-only, never logged). Alias: `MONDAY_API_TOKEN`. |
+| `MONDAY_SYNC_ENABLED` | `false` | Enables the gated CLI sync (the server never auto-syncs). |
+
+Monday **board / column IDs** live in `config/monday-mapping.json` (gitignored), **not** in
+env vars. See `.env.example` for the full annotated list.
 
 ---
 
