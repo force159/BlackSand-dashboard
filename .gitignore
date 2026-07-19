@@ -1,0 +1,27 @@
+# Dependencies (installed via `npm install`, never committed)
+node_modules/
+
+# Local environment / secrets (future Monday.com credentials live here — never commit)
+.env
+.env.*
+!.env.example
+
+# Generated SQLite artifacts (schema/migrations are code and ARE committed; the
+# generated database file and its WAL/SHM sidecars and backups are NOT). Keep
+# data/.gitkeep tracked so the directory exists on a fresh clone.
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.sqlite
+data/*.sqlite-wal
+data/*.sqlite-shm
+data/test-*
+data/backups/
+
+# Real Monday mapping (contains board/column IDs) — keep the .example.json template.
+config/monday-mapping.json
+
+# Logs / OS cruft
+*.log
+npm-debug.log*
+.DS_Store

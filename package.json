@@ -1,0 +1,43 @@
+{
+  "name": "blacksand-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BlackSand executive leasing dashboard — a standalone single-file HTML dashboard with an OPTIONAL lightweight Express host for local/LAN deployment. The standalone HTML is the reference implementation.",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node --watch server/server.js",
+    "check": "node scripts/check-project.js",
+    "db:migrate": "node scripts/migrate.js",
+    "db:check": "node scripts/check-database.js",
+    "db:seed": "node scripts/seed-database.js",
+    "db:seed:inspect": "node scripts/inspect-seed-data.js",
+    "db:seed:check": "node scripts/check-seeded-database.js",
+    "db:seed:compare": "node scripts/compare-seed-to-frontend.js",
+    "api:check": "node scripts/check-api.js",
+    "test:seed": "node --test \"tests/seed/*.test.js\"",
+    "test:api": "node --test \"tests/api/*.test.js\"",
+    "test:frontend": "node --test \"tests/frontend/*.test.js\"",
+    "test:monday": "node --test \"tests/monday/*.test.js\"",
+    "test:monday:integration": "node --test \"tests/monday/integration.test.js\"",
+    "monday:mapping:check": "node scripts/monday/mapping-check.js",
+    "monday:mapping:check:draft": "node scripts/monday/mapping-check.js --allow-placeholders",
+    "monday:mapping:validate-live": "node scripts/monday/validate-live.js",
+    "monday:inspect-board": "node scripts/monday/inspect-board.js",
+    "monday:inspect-sample": "node scripts/monday/inspect-sample.js",
+    "monday:dry-run": "node scripts/monday/dry-run.js",
+    "monday:sync": "node scripts/monday/sync.js",
+    "monday:ready": "node scripts/monday/ready.js",
+    "test": "npm run test:seed && npm run test:api && npm run test:frontend && npm run test:monday && npm run test:history",
+    "verify": "node scripts/verify-phase-5.js",
+    "history:snapshot:dry-run": "node scripts/history-snapshot.js --dry-run",
+    "history:snapshot": "node scripts/history-snapshot.js",
+    "test:history": "node --test tests/history/riyadh-date.test.js tests/history/migration.test.js tests/history/history-engine.test.js tests/history/cli.test.js tests/history/automation.test.js tests/history/history-api.test.js tests/history/corrections.test.js tests/history/analytics.test.js tests/history/analytics-api.test.js tests/history/tenant-analytics.test.js tests/history/correction-pass.test.js"
+  },
+  "engines": {
+    "node": ">=18.11.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "express": "^4.19.2"
+  }
+}
