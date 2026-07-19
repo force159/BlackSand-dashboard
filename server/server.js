@@ -44,14 +44,53 @@ const historyRoutes = require('./history/history-routes');
 const { createSnapshotScheduler } = require('./history/automation/snapshot-scheduler');
 const { loadAutomationConfig, describeConfig } = require('./history/automation/automation-config');
 
-// Minimal structured history logger: quiet on success (info no-op), surfaces warn/error.
-const historyLogger = {
-  info() {},
-  warn(evt, ctx) { console.warn('[history] ' + evt + (ctx ? ' ' + JSON.stringify(ctx) : '')); },
-  error(evt, ctx) { console.error('[history] ' + evt + (ctx ? ' ' + JSON.stringify(ctx) : '')); },
-};
+// Phase 9.4A — production configuration validation + centralized logging + process safety.
+// These are ADDITIVE and only take effect when the server is actually started (startServer);
+// importing `app` for in-process tests does not validate/exit, configure file logging, or
+// install process handlers.
+const productionConfig = require('../config');
+const { createLogger, configure: configureLogging } = require('./logger');
+const log = createLogger('server');
+let APP_VERSION = '0.0.0';
+try { APP_VERSION = require('../package.json').version || APP_VERSION; } catch (_) {}
+
+// Shared, read-only server state for the /health endpoint (populated by startServer).
+const serverState = { startedAt: Date.now(), scheduler: null, config: null };
+
+// History/scheduler/Monday activity flows through the central logger (source "history").
+const historyLogger = createLogger('history');
+
+// Process-level safety net (Part 7). Installed only by startServer(). An unhandled rejection
+// is logged but does NOT kill the kiosk host (availability); an uncaught exception is logged
+// and the process exits non-zero so PM2 restarts it cleanly (after closing SQLite).
+let processHandlersInstalled = false;
+function installProcessErrorHandlers() {
+  if (processHandlersInstalled) return;
+  processHandlersInstalled = true;
+  process.on('unhandledRejection', (reason) => {
+    log.error('unhandledRejection', { reason: (reason && reason.message) ? reason.message : String(reason) });
+  });
+  process.on('uncaughtException', (err) => {
+    log.error('uncaughtException — exiting for a clean restart', { message: err && err.message });
+    try { closeDatabase(); } catch (_) { /* ignore */ }
+    process.exit(1);
+  });
+}
 
 const app = express();
+
+// ── Safe headers (Part 13) ───────────────────────────────────────────────────
+// Conservative, non-breaking hardening. Deliberately NO Content-Security-Policy: the
+// dashboard is a single inline-script document that also loads Chart.js/Three.js/fonts
+// from CDNs, and a CSP would break it. These headers add defence without changing behaviour.
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('X-Frame-Options', 'SAMEORIGIN');
+  res.set('Referrer-Policy', 'no-referrer');
+  res.set('X-DNS-Prefetch-Control', 'off');
+  next();
+});
 
 // This file lives in server/ ; the dashboard + assets live one level up (project root).
 const ROOT = path.join(__dirname, '..');
@@ -74,9 +113,23 @@ app.get('/', (req, res) => {
 // on Monday.com, so it stays green even when data is being (re)configured.
 app.get('/health', (req, res) => {
   res.set('Cache-Control', 'no-store');
+  // Liveness stays green regardless of DB/scheduler, but we surface their status + build
+  // info for operators (Part 6). Each probe is wrapped so /health itself can never throw.
+  let database = 'unknown';
+  try { database = getDatabaseHealth(require('./db/connection').getDatabase()).ok ? 'ready' : 'unavailable'; }
+  catch (_) { database = 'unavailable'; }
+  let scheduler = 'not-running';
+  try {
+    if (serverState.scheduler) { const s = serverState.scheduler.getStatus(); scheduler = s.schedulerRunning ? 'running' : (s.automationEnabled ? 'idle' : 'disabled'); }
+  } catch (_) { scheduler = 'unknown'; }
   res.json({
     status: 'ok',
     service: 'blacksand-dashboard',
+    version: APP_VERSION,
+    environment: (serverState.config && serverState.config.nodeEnv) || process.env.NODE_ENV || 'development',
+    uptime: Math.round(process.uptime()),
+    database,
+    scheduler,
     timestamp: new Date().toISOString(),
   });
 });
@@ -154,9 +207,23 @@ app.use((req, res) => res.status(404).type('text/plain').send('404 Not Found'));
 // clear (secret-free, stack-free) message and exit non-zero — we never begin serving
 // on an invalid database. Registers a single graceful-shutdown handler.
 function startServer() {
+  // Phase 9.4A — validate configuration BEFORE anything else. In production an invalid
+  // config prints a clear, secret-free error and exits non-zero (never serves misconfigured).
+  const appCfg = productionConfig.loadConfig();               // also bridges alias env vars
+  configureLogging({ level: appCfg.logLevel, dir: path.join(ROOT, 'logs'), toFile: true });
+  productionConfig.validateConfigOrExit(appCfg, { logger: log });
+  serverState.config = appCfg;
+  serverState.startedAt = Date.now();
+  installProcessErrorHandlers();
+  log.info('startup: configuration valid', { version: APP_VERSION, detail: productionConfig.describe(appCfg) });
+
   try {
     const cfg = getDatabaseConfig();
     const db = initializeDatabase();
+    // Database safety (Part 8): the file must be writable (init created it). FK + WAL are
+    // already hard-verified in db/connection on open; abort with a clear message otherwise.
+    try { require('fs').accessSync(cfg.dbPath, require('fs').constants.W_OK); }
+    catch (e) { throw new Error(`database file is not writable (${e.code || e.message})`); }
     const migration = runMigrations(db, () => {}); // concise; details via `npm run db:migrate`
     const health = getDatabaseHealth(db);
     if (!health.ok || health.migrationVersion !== SCHEMA_VERSION) {
@@ -166,6 +233,7 @@ function startServer() {
       `Database ready: ${cfg.displayPath} (schema v${health.migrationVersion}, ` +
       `journal ${health.journalMode}, ${migration.applied.length} migration(s) applied this start)`
     );
+    log.info('database ready', { db: cfg.displayPath, schemaVersion: health.migrationVersion, journal: health.journalMode, migrationsApplied: migration.applied.length });
 
     // Auto-seed the bootstrap data when the database is EMPTY, so a plain `npm start`
     // serves the live SQLite-backed API immediately (otherwise /api/dashboard returns
@@ -196,7 +264,9 @@ function startServer() {
     const autoCfg = loadAutomationConfig();
     scheduler = createSnapshotScheduler({ getDb: () => require('./db/connection').getDatabase(), config: autoCfg, logger: historyLogger });
     historyRoutes.setScheduler(scheduler);
+    serverState.scheduler = scheduler;
     console.log(`Historical automation: ${describeConfig(autoCfg)}`);
+    log.info('historical automation configured', { detail: describeConfig(autoCfg) });
   } catch (e) {
     console.error(`Historical automation config invalid — automation disabled: ${e.message}`);
   }
@@ -253,6 +323,7 @@ function startServer() {
     lines.push('  Press Ctrl+C to stop.');
     lines.push('');
     console.log(lines.join('\n'));
+    log.info('listening', { host: HOST, port: PORT });
   });
 
   // Start the daily scheduler + fire a conservative (today-only) startup recovery. The
@@ -271,6 +342,7 @@ function startServer() {
     if (shuttingDown) return; // ignore repeated signals
     shuttingDown = true;
     console.log(`\n${signal} received — shutting down…`);
+    log.info('shutdown: signal received', { signal });
     // Stop scheduling new work, then wait (bounded) for any active capture before closing
     // the DB, so a snapshot transaction is never cut off mid-commit (CP7).
     const stopped = scheduler ? Promise.resolve(scheduler.stopAndWait(2500)).catch(() => {}) : Promise.resolve();
