@@ -31,7 +31,7 @@
     "verify": "node scripts/verify-phase-5.js",
     "history:snapshot:dry-run": "node scripts/history-snapshot.js --dry-run",
     "history:snapshot": "node scripts/history-snapshot.js",
-    "test:history": "node --test tests/history/riyadh-date.test.js tests/history/migration.test.js tests/history/history-engine.test.js tests/history/cli.test.js tests/history/automation.test.js tests/history/history-api.test.js tests/history/corrections.test.js tests/history/analytics.test.js tests/history/analytics-api.test.js tests/history/tenant-analytics.test.js tests/history/correction-pass.test.js"
+    "test:history": "node --test tests/history/riyadh-date.test.js tests/history/migration.test.js tests/history/history-engine.test.js tests/history/cli.test.js tests/history/automation.test.js tests/history/history-api.test.js tests/history/corrections.test.js tests/history/analytics.test.js tests/history/analytics-api.test.js tests/history/tenant-analytics.test.js tests/history/correction-pass.test.js tests/history/phase9-3-api-integration.test.js"
   },
   "engines": {
     "node": ">=18.11.0"
