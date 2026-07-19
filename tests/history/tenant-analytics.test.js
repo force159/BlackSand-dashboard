@@ -114,6 +114,8 @@ test('insights: concentration.high + occupancy.critical-low + vacancy.high + dat
   assert.ok(keys.includes('concentration.high') && keys.includes('occupancy.critical-low') && keys.includes('vacancy.high'));
   assert.ok(keys.includes('data-quality.rent-unavailable') && keys.includes('data-quality.lease-expiry-unavailable'));
   assert.ok(all.every((i) => i.ruleKey && i.category && i.severity && i.thresholds && i.evidence));
+  // Phase 9.3: every insight carries deterministic display text so the frontend renders it verbatim.
+  assert.ok(all.every((i) => typeof i.title === 'string' && i.title.length > 0 && typeof i.message === 'string' && i.message.length > 0));
   const warningsOnly = evaluateInsights(ctx, { severity: 'warning' });
   assert.ok(warningsOnly.length > 0 && warningsOnly.every((i) => i.severity === 'warning'));
 });
