@@ -1081,17 +1081,21 @@
     .project-tab:hover {
       color: var(--white-70);
     }
-    /* The active tab keeps its lilac colour + underline for when the row is revealed, but is
-       hidden at rest like the others (the header project name already shows the active
-       project). Tabs stay in flow (opacity only) so revealing them never shifts the layout. */
+    /* The ACTIVE project is always visible and pulled to the START of the row (order:-1),
+       so the current project is always identifiable; the OTHER tabs stay hidden until the
+       row is hovered. Tabs stay in flow (opacity only) so revealing them never shifts the
+       layout. Reveal is HOVER-ONLY (no :focus-within) so a clicked tab can't stay stuck
+       visible after switching. */
     .project-tab.active {
       color: var(--accent-hi);
       border-bottom-color: var(--accent-hi);
       font-weight: 700;
+      opacity: 1;
+      transform: none;
+      pointer-events: auto;
+      order: -1;
     }
-    /* Reveal every project name on hover or keyboard focus anywhere in the row. */
-    .project-tabs:hover .project-tab,
-    .project-tabs:focus-within .project-tab {
+    .project-tabs:hover .project-tab {
       opacity: 1;
       transform: translateY(0);
       pointer-events: auto;
@@ -3227,6 +3231,7 @@
         btn.dataset.index = i;
         btn.addEventListener('click', () => {
           if (i !== currentIndex) switchProject(i); // instant data switch, no reload
+          btn.blur(); // release focus so the revealed row collapses once the pointer leaves
         });
         nav.appendChild(btn);
       });
