@@ -679,8 +679,9 @@
       color: var(--white-30);
       margin-top: 0.25rem;
     }
-    /* Summary metric accented in teal (matching "Overall Leased") — the single
-       data-highlight colour. Purple stays reserved for the brand logo/diamond. */
+    /* Summary metric accented in lilac (matching "Overall Leased") — the single
+       data-highlight ink (--accent-hi). The medium brand purple (--accent) stays for the
+       logo/diamond. */
     .velocity-card.is-overall .vel-value { color: var(--accent-hi); }
 
     /* ── Performance Summary ribbon (trend indicators) ── */
@@ -715,7 +716,7 @@
       margin-top: 0.3125rem;
     }
     /* Sign-based colouring — no new colours introduced */
-    .perf-up      { color: var(--accent-hi); }  /* positive → teal */
+    .perf-up      { color: var(--accent-hi); }  /* positive → lilac (purple) */
     .perf-down    { color: var(--coral); }       /* negative → coral */
     .perf-neutral { color: var(--white-50); }    /* flat → muted grey */
 
@@ -839,11 +840,6 @@
       padding: 0.375rem 0 0;
     }
 
-    .bottom-bar .address-icon {
-      font-size: 0.875rem;
-      color: var(--accent-hi);
-    }
-
     .bottom-bar .address-text {
       font-size: 0.75rem;
       font-weight: 500;
@@ -929,6 +925,28 @@
     body.anim-paused .pf-directory, body.anim-paused .pf-tenants,
     body.anim-paused .pf-buildings {
       animation-play-state: paused;
+    }
+
+    /* Adaptive quality (Phase 8.5): reduced/static modes disable the continuous panel
+       float (the only always-on CSS motion). Cards stay fully visible + in place — same
+       layout, just no perpetual motion. Mirrors the reduced-motion treatment. */
+    html[data-quality="reduced"] .pf-retail, html[data-quality="reduced"] .pf-offices,
+    html[data-quality="reduced"] .pf-occ, html[data-quality="reduced"] .pf-stats,
+    html[data-quality="reduced"] .pf-velocity, html[data-quality="reduced"] .pf-perf,
+    html[data-quality="reduced"] .pf-breakdown, html[data-quality="reduced"] .pf-leased,
+    html[data-quality="reduced"] .pf-directory, html[data-quality="reduced"] .pf-tenants,
+    html[data-quality="reduced"] .pf-buildings,
+    html[data-quality="static"] .pf-retail, html[data-quality="static"] .pf-offices,
+    html[data-quality="static"] .pf-occ, html[data-quality="static"] .pf-stats,
+    html[data-quality="static"] .pf-velocity, html[data-quality="static"] .pf-perf,
+    html[data-quality="static"] .pf-breakdown, html[data-quality="static"] .pf-leased,
+    html[data-quality="static"] .pf-directory, html[data-quality="static"] .pf-tenants,
+    html[data-quality="static"] .pf-buildings {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+      translate: none !important;
+      will-change: auto;
     }
 
     /* Reduced motion: no float/entrance transforms at all — everything static + visible. */
@@ -1189,6 +1207,13 @@
       height: 3.25rem;
       filter: drop-shadow(0 0.25rem 0.4375rem rgba(0, 0, 0, 0.62));
     }
+    /* Flat DOM medallion logo (reduced/static modes) — fits the same 3.25rem circle. */
+    .plaque-initials .plaque-logo-img {
+      width: 82%;
+      height: 82%;
+      object-fit: contain;
+      display: block;
+    }
     .plaque-info {
       flex: 1;
       min-width: 0;
@@ -1365,8 +1390,8 @@
         <div class="presentation-badge" id="presentationBadge">
           <span class="pres-dot"></span>Presentation Mode
         </div>
-        <div class="header-updated">
-          <div class="label"><span class="pulse-dot"></span>Last Updated</div>
+        <div class="header-updated" id="refreshBar">
+          <div class="label"><span class="pulse-dot"></span>Last Checked</div>
           <div class="value" id="lastUpdated">—</div>
         </div>
         <div class="divider-v"></div>
@@ -1578,6 +1603,154 @@
 
   <script>
     /* ═══════════════════════════════════════════════════
+       ADAPTIVE PERFORMANCE / QUALITY CONTROLLER (Phase 8.5)
+       One canonical controller. Resolves a quality MODE (full | reduced | static) from,
+       in precedence order: a manual ?quality= override → a persisted preference → an
+       automatic decision (capabilities + prefers-reduced-motion + a bounded startup
+       frame probe). Every visual consumer reads the resolved CONFIG object; no raw
+       deviceMemory/userAgent checks are scattered elsewhere. It changes ONLY visual cost
+       — never data, layout, calculations, polling, or the API. `data-quality` on <html>
+       drives the CSS motion gates.
+       Reset the saved preference:  localStorage.removeItem('dashboard-quality-v1')
+       (or open with ?quality=auto). Remove a URL override by deleting &quality=… .
+       ═══════════════════════════════════════════════════ */
+    const QUALITY_STORAGE_KEY = 'dashboard-quality-v1';
+    const QUALITY_MODES = ['full', 'reduced', 'static'];
+
+    // Per-mode visual config. FULL preserves today's exact look (do not raise these).
+    function qualityConfigFor(mode) {
+      switch (mode) {
+        case 'full':
+          return { mode: 'full', particleCols: 220, particleRows: 130, waveWebGL: true, wavePR: 1.5, waveAntialias: true,
+            occWebGL: true, occPR: 2, occAntialias: true, medallionMode: 'webgl', medallionPR: 2, chartAnimMs: 600, panelMotion: true };
+        case 'static':
+          return { mode: 'static', particleCols: 0, particleRows: 0, waveWebGL: false, wavePR: 1, waveAntialias: false,
+            occWebGL: false, occPR: 1, occAntialias: false, medallionMode: 'dom', medallionPR: 1, chartAnimMs: 0, panelMotion: false };
+        case 'reduced':
+        default:
+          return { mode: 'reduced', particleCols: 132, particleRows: 78, waveWebGL: true, wavePR: 1, waveAntialias: false,
+            occWebGL: true, occPR: 1.25, occAntialias: true, medallionMode: 'dom', medallionPR: 1, chartAnimMs: 250, panelMotion: false };
+      }
+    }
+
+    function getRequestedQualityMode() {
+      try {
+        const q = new URLSearchParams(window.location.search).get('quality');
+        if (q === 'full' || q === 'reduced' || q === 'static' || q === 'auto') return q;
+      } catch (e) {}
+      return 'auto'; // invalid/absent → auto
+    }
+    function prefersReducedMotion() {
+      try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
+    }
+    function detectQualityCapabilities() {
+      const caps = { webgl: false, webgl2: false, cores: null, memory: null, dpr: 1, saveData: false, reducedMotion: prefersReducedMotion() };
+      try { caps.dpr = window.devicePixelRatio || 1; } catch (e) {}
+      try { caps.cores = (typeof navigator.hardwareConcurrency === 'number') ? navigator.hardwareConcurrency : null; } catch (e) {}
+      try { caps.memory = (typeof navigator.deviceMemory === 'number') ? navigator.deviceMemory : null; } catch (e) {}
+      try { caps.saveData = !!(navigator.connection && navigator.connection.saveData); } catch (e) {}
+      try {
+        const c = document.createElement('canvas');
+        const gl2 = c.getContext('webgl2');
+        caps.webgl2 = !!gl2;
+        caps.webgl = !!(gl2 || c.getContext('webgl') || c.getContext('experimental-webgl'));
+      } catch (e) { caps.webgl = false; }
+      return caps;
+    }
+    const QUALITY_PREF_TTL_MS = 7 * 24 * 60 * 60 * 1000; // re-evaluate weekly (device/driver may change)
+    // ONLY these persisted sources are DURABLE startup preferences. Everything else — a
+    // runtime-monitor / probe-poor / context-loss downgrade, or a legacy/unknown entry —
+    // is treated as session-only: used as an initial state but ALWAYS re-benchmarked, so a
+    // transient slowdown can never permanently pin Auto to a low mode (the Phase 8.5 fix).
+    const DURABLE_PREF_SOURCES = ['manual', 'startup-benchmark'];
+    // Safe read/write of the versioned preference (never throws).
+    function readQualityPreference() {
+      try {
+        const raw = window.localStorage.getItem(QUALITY_STORAGE_KEY);
+        if (!raw) return null;
+        const o = JSON.parse(raw);
+        if (o && QUALITY_MODES.indexOf(o.mode) >= 0) return o; // ignore corrupt/unknown
+      } catch (e) {}
+      return null;
+    }
+    function writeQualityPreference(mode, source) {
+      try { window.localStorage.setItem(QUALITY_STORAGE_KEY, JSON.stringify({ v: 1, mode: mode, source: source, at: Date.now() })); } catch (e) {}
+    }
+    function removeQualityPreference() {
+      try { window.localStorage.removeItem(QUALITY_STORAGE_KEY); } catch (e) {}
+    }
+
+    // Resolve the INITIAL mode (synchronous — the auto probe may upgrade/downgrade later).
+    // Precedence: manual URL override → durable MANUAL preference → (auto) benchmark.
+    // KEY FIX: a stored value whose source is NOT durable (runtime-monitor / probe-poor /
+    // context-loss / legacy) is used only as a temporary initial state and ALWAYS triggers
+    // a fresh startup benchmark — it can never skip the benchmark or pin Auto low.
+    function resolveInitialQuality(requested, caps, pref) {
+      if (requested === 'full' || requested === 'reduced' || requested === 'static') {
+        // Explicit, intentional choice (persisted as 'manual' by the caller).
+        return { mode: (requested === 'full' && !caps.webgl) ? 'static' : requested, reason: 'url-override', requested: requested, manual: true, probe: false };
+      }
+      // requested === 'auto'
+      if (!caps.webgl) return { mode: 'static', reason: 'no-webgl', requested: 'auto', probe: false };
+      if (caps.reducedMotion) return { mode: 'reduced', reason: 'prefers-reduced-motion', requested: 'auto', probe: true };
+      const fresh = pref && pref.at && (Date.now() - pref.at) < QUALITY_PREF_TTL_MS;
+      if (fresh && pref.source === 'manual') {
+        // Durable, intentional manual choice → respected, benchmark intentionally skipped.
+        return { mode: pref.mode, reason: 'manual-preference', requested: 'auto', probe: false };
+      }
+      if (fresh && pref.mode) {
+        // Any AUTO-origin stored value (durable 'startup-benchmark' OR a non-durable
+        // runtime/probe/legacy downgrade): use ONLY as the initial state, then re-benchmark.
+        return { mode: pref.mode, reason: 'stored-' + (pref.source || 'legacy') + '-initial', requested: 'auto', probe: true };
+      }
+      // No fresh preference: start conservatively at reduced; the startup probe may upgrade.
+      return { mode: 'reduced', reason: 'auto-startup', requested: 'auto', probe: true };
+    }
+
+    // Raw diagnostics captured at startup (development-only reporting; never affects logic).
+    function rawStoredQualityPreference() {
+      try { return window.localStorage.getItem(QUALITY_STORAGE_KEY); } catch (e) { return '(localStorage unavailable)'; }
+    }
+    function urlQualityOverride() {
+      try { return new URLSearchParams(window.location.search).get('quality'); } catch (e) { return null; }
+    }
+    const performanceProfile = {
+      requested: getRequestedQualityMode(),
+      capabilities: detectQualityCapabilities(),
+      resolvedMode: 'reduced',
+      reason: 'init',
+      initialResolvedMode: null,           // mode chosen synchronously at startup (before any probe)
+      initialReason: null,
+      config: null,
+      probe: null,                          // startup benchmark {frames, medianMs, p95Ms, fps}
+      storedPreferenceRaw: rawStoredQualityPreference(), // exact localStorage string (or null)
+      storedPreference: readQualityPreference(),         // parsed {mode, source, at} or null
+      urlOverride: urlQualityOverride(),                 // ?quality=… value or null
+      visibilityAtStart: (typeof document !== 'undefined' ? document.visibilityState : null),
+      downgradeHistory: [],                 // [{from,to,reason,at,sample}] — every mode change
+      monitor: { rafId: null, timer: null, samples: [], lastDowngradeAt: 0 },
+    };
+    (function initResolve() {
+      // Explicit ?quality=auto is a "reset to automatic" — drop any stored preference and
+      // re-benchmark (the documented reset; users never need to hand-clear localStorage).
+      if (performanceProfile.urlOverride === 'auto') { removeQualityPreference(); performanceProfile.storedPreference = null; }
+      const r = resolveInitialQuality(performanceProfile.requested, performanceProfile.capabilities, performanceProfile.storedPreference);
+      performanceProfile.resolvedMode = r.mode;
+      performanceProfile.reason = r.reason;
+      performanceProfile.initialResolvedMode = r.mode;
+      performanceProfile.initialReason = r.reason;
+      performanceProfile.shouldProbe = !!r.probe;
+      performanceProfile.config = qualityConfigFor(r.mode);
+      // A manual URL choice is intentional → persist it durably as source 'manual'.
+      if (r.manual) writeQualityPreference(performanceProfile.requested, 'manual');
+    })();
+    // Live config other code reads. `QUALITY.mode` etc.
+    let QUALITY = performanceProfile.config;
+    function getQualityConfig() { return QUALITY; }
+    // Reflect on <html> so CSS motion gates apply immediately (before first paint).
+    try { document.documentElement.setAttribute('data-quality', QUALITY.mode); } catch (e) {}
+
+    /* ═══════════════════════════════════════════════════
        DATA
        ═══════════════════════════════════════════════════ */
     /* Real tenant data. Each project has a `retail` and an `office` property;
@@ -1589,7 +1762,11 @@
                 Set to null when unknown; metrics then fall back to leased area.
        projects[0] (Business Address) is the default view shown on load.
        projects[1] (Town Center) is prepared so it can be displayed later. */
-    const projects = [
+    // `let` (not const): in server/live mode this embedded array is REPLACED by the
+    // SQLite-backed /api/dashboard payload (Phase 4). In standalone demo mode it is
+    // used as-is. It is never mutated destructively except by assignMockLeaseDates()
+    // in demo mode.
+    let projects = [
       {
         project: 'Business Address',
         address: '1200 Business Boulevard, Financial District',
@@ -1731,8 +1908,14 @@
        Leased area = sum of tenant lease areas (source of truth). GLA is the
        building's gross leasable area; when unknown (null) we fall back to the
        leased area so the numbers stay coherent. */
+    // Sum lease areas, skipping any non-finite value so a single malformed area can
+    // never turn a KPI/chart into NaN (Phase 8 live-data safety). The directory uses a
+    // stricter parseTenantArea (invalid → null); aggregate sums simply omit invalid rows.
     function sumAreas(tenants) {
-      return tenants.reduce((total, t) => total + t.area, 0);
+      return tenants.reduce((total, t) => {
+        const a = (typeof t.area === 'number') ? t.area : Number(t.area);
+        return total + (Number.isFinite(a) ? a : 0);
+      }, 0);
     }
     function computeMetrics(p) {
       const retailTenantArea = sumAreas(p.retail.tenants);
@@ -1819,28 +2002,41 @@
 
     // Leased area (m²) grouped by tenant type across both categories, sorted
     // largest-first — powers the Occupancy Breakdown chart.
+    // Category here = the tenant's TYPE label (e.g. "Shop"/"Office"/"Restaurant"), NOT
+    // the retail/office asset group. Missing/blank types map to "Unspecified" (never
+    // silently folded into a real type or the asset group); areas are finite-guarded.
     function leasedAreaByType(p) {
       const totals = {};
       p.retail.tenants.concat(p.office.tenants).forEach(t => {
-        totals[t.type] = (totals[t.type] || 0) + t.area;
+        const type = (t.type != null && String(t.type).trim() !== '') ? String(t.type).trim() : 'Unspecified';
+        const a = (typeof t.area === 'number') ? t.area : Number(t.area);
+        totals[type] = (totals[type] || 0) + (Number.isFinite(a) ? a : 0);
       });
       const entries = Object.entries(totals).sort((a, b) => b[1] - a[1]);
       return { labels: entries.map(e => e[0]), values: entries.map(e => Math.round(e[1])) };
     }
 
-    /* ═══════ Top Tenants (grouped by name, top 3 by leased area) ═══════ */
+    /* ═══════ Top Tenants (grouped by tenant identity, top 3 by leased area) ═══════
+       Identity uses the SAME normalization as the Tenant Directory (NFKC + trim +
+       whitespace-collapse + case-fold), so "Al  Tamimi" and "Al Tamimi" rank as one
+       organisation — never fuzzy/edit-distance matching. A clean display name (first
+       occurrence) and a logo are carried through. Areas are finite-guarded. This is a
+       pure derived view; the raw p.retail/p.office tenant arrays are never mutated. */
     function computeTopTenants(p) {
       const all = p.retail.tenants.concat(p.office.tenants);
-      const grouped = {};
+      const grouped = new Map();
       all.forEach(t => {
-        if (!grouped[t.name]) grouped[t.name] = { area: 0, logo: null };
-        grouped[t.name].area += t.area;
-        if (!grouped[t.name].logo && t.logo) grouped[t.name].logo = t.logo; // carry logo through grouping
+        const key = normalizeTenantName(t.name);
+        if (!grouped.has(key)) grouped.set(key, { name: displayTenantName(t.name), area: 0, logo: null });
+        const g = grouped.get(key);
+        const a = (typeof t.area === 'number') ? t.area : Number(t.area);
+        if (Number.isFinite(a)) g.area += a;
+        if (!g.logo && t.logo) g.logo = t.logo;         // carry logo through grouping
       });
-      return Object.entries(grouped)
-        .sort((a, b) => b[1].area - a[1].area)
+      return [...grouped.values()]
+        .sort((a, b) => b.area - a.area)
         .slice(0, 3)
-        .map(([name, v]) => ({ name, area: v.area, logo: v.logo }));
+        .map(v => ({ name: v.name, area: v.area, logo: v.logo }));
     }
 
     function tenantInitials(name) {
@@ -1973,7 +2169,7 @@
         });
         const coin = new THREE.Mesh(coinGeo, coinMat);
 
-        // Teal edge ring accent
+        // Lilac edge ring accent
         const ringMat = new THREE.MeshPhysicalMaterial({ color: 0xb9a6d9, metalness: 0.55, roughness: 0.34, clearcoat: 0.2, clearcoatRoughness: 0.5, envMapIntensity: 0.7, emissive: 0x140f1c });
         const ring = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.06, 14, 56), ringMat);
         ring.position.z = 0.2;
@@ -2056,34 +2252,54 @@
       const grid = document.getElementById('topTenantsGrid');
       if (!grid) return;
       disposeMedallions();
-      grid.innerHTML = top3.map((t, i) => `
-        <div class="tenant-plaque">
-          <div class="tenant-plaque-inner">
-            <div class="plaque-rank">#${i + 1}</div>
-            <div class="plaque-initials" data-initials="${tenantInitials(t.name)}" data-logo="${t.logo || ''}"></div>
-            <div class="plaque-info">
-              <div class="plaque-name">${t.name}</div>
-              <div class="plaque-area">${Math.round(t.area).toLocaleString()} <span class="kpi-unit">m²</span></div>
-            </div>
-          </div>
-        </div>
-      `).join('');
-      // One reusable renderer for every tenant: the medallion shows the tenant's
-      // logo (from its data) or its initials. Flat text only if WebGL is absent.
+      // Tenant name/logo are UNTRUSTED (Monday) → build the DOM (textContent + setAttribute),
+      // never string-interpolated innerHTML. Markup/classes are identical to before.
+      grid.innerHTML = '';
+      top3.forEach((t, i) => {
+        const plaque = document.createElement('div'); plaque.className = 'tenant-plaque';
+        const inner = document.createElement('div'); inner.className = 'tenant-plaque-inner';
+        const rank = document.createElement('div'); rank.className = 'plaque-rank'; rank.textContent = '#' + (i + 1);
+        const initials = document.createElement('div'); initials.className = 'plaque-initials';
+        initials.setAttribute('data-initials', tenantInitials(t.name));
+        initials.setAttribute('data-logo', t.logo || '');
+        const info = document.createElement('div'); info.className = 'plaque-info';
+        const name = document.createElement('div'); name.className = 'plaque-name'; name.textContent = t.name;
+        const area = document.createElement('div'); area.className = 'plaque-area';
+        area.textContent = Math.round(t.area).toLocaleString() + ' ';
+        const unit = document.createElement('span'); unit.className = 'kpi-unit'; unit.textContent = 'm²';
+        area.appendChild(unit);
+        info.appendChild(name); info.appendChild(area);
+        inner.appendChild(rank); inner.appendChild(initials); inner.appendChild(info);
+        plaque.appendChild(inner); grid.appendChild(plaque);
+      });
+      // Medallion rendering is quality-driven: FULL uses a per-tenant WebGL coin;
+      // REDUCED/STATIC use a flat DOM medallion (logo image if available, else initials)
+      // — same visible size/content, zero extra WebGL contexts/loops on weak devices.
+      const webglMedallions = QUALITY.medallionMode === 'webgl' && typeof THREE !== 'undefined';
       grid.querySelectorAll('.plaque-initials').forEach(el => {
         const initials = el.getAttribute('data-initials') || '';
         const logo = el.getAttribute('data-logo') || '';
-        if (typeof THREE !== 'undefined') {
+        if (webglMedallions) {
           const m = createMedallion(52, initials, logo);
           if (m) { el.classList.add('has-3d'); el.appendChild(m.domElement); medallions.push(m); return; }
         }
-        el.textContent = initials; // fallback (no WebGL)
+        // Flat DOM fallback: logo <img> (initials on error) or initials text.
+        if (logo) {
+          const img = document.createElement('img');
+          img.className = 'plaque-logo-img';
+          img.alt = ''; img.setAttribute('aria-hidden', 'true');
+          img.addEventListener('error', () => { img.remove(); el.textContent = initials; });
+          img.src = logo;
+          el.textContent = ''; el.appendChild(img);
+        } else {
+          el.textContent = initials;
+        }
       });
     }
 
     // Brand palette for the categorical breakdown bars (Guidelines §3.4 / §3.5).
-    // Restrained single-family ramp (teal → slate) so the breakdown reads as one
-    // calm palette rather than a rainbow.
+    // Restrained single-family ramp (muted purple → graphite) so the breakdown reads as
+    // one calm palette rather than a rainbow.
     const TYPE_COLORS = ['#a98fc9', '#8a7ba0', '#6f677e', '#585462', '#47444e', '#3a383f'];
 
     /* ═══════════════════════════════════════════════════
@@ -2114,13 +2330,31 @@
       return '<svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><rect x="0.5" y="4.3" width="9" height="1.4" fill="currentColor"/></svg>';
     }
 
+    // Period-over-period deltas need historical snapshots, which the current Monday board
+    // alone cannot provide. So the mock is DEMO-ONLY: in live mode we render a safe
+    // "unavailable" state (neutral glyph + "—") using the SAME .perf-item structure — no
+    // banner, no new colours, no layout change. Titles are static/trusted. (Phase 8)
     function renderPerformanceSummary(data = performanceSummary) {
       const el = document.getElementById('perfSummary');
       if (!el) return;
+      const titles = ['Overall Occupancy', 'Leasing Velocity', 'New Leasing'];
+      const live = DASHBOARD_MODE_INITIAL !== 'demo';
+      if (live) {
+        el.innerHTML = titles.map(title => `
+          <div class="perf-item">
+            <div class="perf-title">${title}</div>
+            <div class="perf-valrow perf-neutral">
+              <span class="perf-arrow">${arrowSVG('neutral')}</span>
+              <span class="perf-value">—</span>
+            </div>
+            <div class="perf-period">Awaiting historical data</div>
+          </div>`).join('');
+        return;
+      }
       const items = [
-        { title: 'Overall Occupancy', change: data.occupancyChange },
-        { title: 'Leasing Velocity',  change: data.velocityChange },
-        { title: 'New Leasing',       change: data.newLeasing },
+        { title: titles[0], change: data.occupancyChange },
+        { title: titles[1], change: data.velocityChange },
+        { title: titles[2], change: data.newLeasing },
       ];
       el.innerHTML = items.map(it => {
         const f = formatChange(it.change);
@@ -2138,39 +2372,148 @@
 
     /* ═══════ Tenant tables (with live search filter) ═══════ */
     // A tenant matches if the query appears in its name, type, or area.
-    function tenantMatches(t, q) {
-      if (!q) return true;
-      return t.name.toLowerCase().includes(q)
-          || t.type.toLowerCase().includes(q)
-          || String(t.area).includes(q)
-          || t.area.toLocaleString().includes(q);
+    /* ═══════ Tenant Directory consolidation (PRESENTATION-ONLY) ═══════
+       The directory shows ONE row per tenant within a project+category, summing the
+       area across that tenant's lease/unit records. This is a read-model over the raw
+       per-lease arrays — it NEVER mutates p.retail.tenants / p.office.tenants, so every
+       KPI, chart, velocity, top-tenant and building calc still counts each lease once.
+       Called per category (retail vs office already come as separate arrays), so retail
+       and office — and each project — never merge. Aggregation is safe against
+       accidental duplicates because SQLite enforces per-lease uniqueness (Monday
+       external_id / seed source_record_key), so each lease reaches the browser once. */
+
+    // Matching key: NFKC, trimmed, whitespace-collapsed, lower-cased. No fuzzy matching,
+    // no punctuation stripping, no legal-suffix stripping — only exact-after-normalize.
+    function normalizeTenantName(name) {
+      return String(name == null ? '' : name).normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
+    }
+    // Clean human-readable display name (same normalization minus case-folding).
+    function displayTenantName(name) {
+      return String(name == null ? '' : name).normalize('NFKC').trim().replace(/\s+/g, ' ');
+    }
+    // Accept only a finite numeric area (number, or a strictly-numeric string). Blank,
+    // "120 abc", NaN, ±Infinity are rejected (not treated as zero).
+    function parseTenantArea(a) {
+      if (typeof a === 'number') return Number.isFinite(a) ? a : null;
+      if (typeof a === 'string') {
+        const t = a.trim();
+        if (t === '' || !/^-?\d+(\.\d+)?$/.test(t)) return null;
+        const n = Number(t);
+        return Number.isFinite(n) ? n : null;
+      }
+      return null;
     }
 
-    function renderTenantTable(tableId, tenants, q) {
+    // Aggregate raw tenant/lease records (one category array) into directory rows.
+    // Pure: does not mutate the input array or its objects. Preserves source order
+    // (first occurrence). Sums valid areas (rounded to 2dp for display, matching source
+    // precision); area is null when every matching record's area is invalid → em dash.
+    function aggregateTenantsForDirectory(tenants) {
+      if (!Array.isArray(tenants)) return [];
+      const byKey = new Map();
+      for (const t of tenants) {
+        const key = normalizeTenantName(t && t.name);
+        if (!byKey.has(key)) {
+          byKey.set(key, { tenantKey: key, name: displayTenantName(t && t.name), type: '', _typeSet: false, _typeConflict: false, areaSum: 0, hasValidArea: false, unitCount: 0 });
+        }
+        const row = byKey.get(key);
+        row.unitCount++;
+        const ty = (t && t.type != null) ? String(t.type).trim() : '';
+        if (ty) {
+          if (!row._typeSet) { row.type = ty; row._typeSet = true; }
+          else if (row.type !== ty) { row._typeConflict = true; } // keep first valid; flag conflict
+        }
+        const area = parseTenantArea(t && t.area);
+        if (area != null) { row.areaSum += area; row.hasValidArea = true; }
+      }
+      const out = [];
+      for (const row of byKey.values()) {
+        if (row._typeConflict && typeof console !== 'undefined' && console.warn) {
+          console.warn('[directory] conflicting types for tenant "' + row.name + '" — using first valid type "' + row.type + '"');
+        }
+        out.push({
+          tenantKey: row.tenantKey,
+          name: row.name,
+          type: row.type,
+          area: row.hasValidArea ? Math.round(row.areaSum * 100) / 100 : null,
+          unitCount: row.unitCount,
+        });
+      }
+      return out;
+    }
+
+    // Search over aggregated rows: name, type, and total area (raw + formatted). Null-safe.
+    function tenantMatches(t, q) {
+      if (!q) return true;
+      const name = String(t.name == null ? '' : t.name).toLowerCase();
+      const type = String(t.type == null ? '' : t.type).toLowerCase();
+      const areaRaw = (t.area == null) ? '' : String(t.area);
+      const areaFmt = (t.area == null) ? '' : t.area.toLocaleString();
+      return name.includes(q) || type.includes(q) || areaRaw.includes(q) || areaFmt.includes(q);
+    }
+
+    // Render one directory table. Rows are AGGREGATED directory rows. Tenant name/type
+    // are UNTRUSTED (Monday) → inserted via textContent (never innerHTML). Empty state
+    // and the 3-column layout are unchanged.
+    function renderTenantTable(tableId, rows, q) {
       const tbody = document.querySelector('#' + tableId + ' tbody');
       tbody.innerHTML = '';
-      const rows = tenants.filter(t => tenantMatches(t, q));
-      if (rows.length === 0) {
+      const shown = rows.filter(t => tenantMatches(t, q));
+      if (shown.length === 0) {
         const tr = document.createElement('tr');
         tr.className = 'tenant-empty';
-        tr.innerHTML = '<td colspan="3">No matching tenants</td>';
+        const td = document.createElement('td');
+        td.colSpan = 3;
+        td.textContent = 'No matching tenants';
+        tr.appendChild(td);
         tbody.appendChild(tr);
         return;
       }
-      rows.forEach(t => {
+      shown.forEach(t => {
         const tr = document.createElement('tr');
-        tr.innerHTML =
-          `<td>${t.name}</td>` +
-          `<td><span class="type-pill">${t.type}</span></td>` +
-          `<td>${t.area.toLocaleString()}</td>`;
+        const tdName = document.createElement('td');
+        tdName.textContent = t.name;
+        const tdType = document.createElement('td');
+        const pill = document.createElement('span');
+        pill.className = 'type-pill';
+        pill.textContent = t.type;
+        tdType.appendChild(pill);
+        const tdArea = document.createElement('td');
+        tdArea.textContent = (t.area == null) ? '—' : t.area.toLocaleString();
+        tr.appendChild(tdName);
+        tr.appendChild(tdType);
+        tr.appendChild(tdArea);
         tbody.appendChild(tr);
       });
     }
 
+    // Directory rows come from an aggregated view model. Forward-compatible: if a future
+    // API payload supplies a pre-aggregated `tenantDirectory`, use it; else aggregate the
+    // raw arrays here. Raw p.retail.tenants / p.office.tenants are never modified.
+    function directoryRows(category) {
+      return Array.isArray(category && category.tenantDirectory)
+        ? category.tenantDirectory
+        : aggregateTenantsForDirectory(category ? category.tenants : []);
+    }
+
     function renderTenants(p) {
       const q = (document.getElementById('tenantSearch').value || '').trim().toLowerCase();
-      renderTenantTable('retailTable', p.retail.tenants, q);
-      renderTenantTable('officeTable', p.office.tenants, q);
+      renderTenantTable('retailTable', directoryRows(p.retail), q);
+      renderTenantTable('officeTable', directoryRows(p.office), q);
+      // Aggregation shrinks row counts; clamp the directory scroller so a prior scroll
+      // position can't leave a blank view. Never forces to top (preserves search scroll).
+      try {
+        const sc = tenantScroller();
+        if (sc) {
+          const maxTop = Math.max(0, sc.scrollHeight - sc.clientHeight);
+          if (sc.scrollTop > maxTop) {
+            suppressScrollDetection = true;
+            sc.scrollTop = maxTop;
+            clearTimeout(suppressTimer);
+            suppressTimer = setTimeout(() => { suppressScrollDetection = false; }, 200);
+          }
+        }
+      } catch (e) { /* scroller not present yet — ignore */ }
     }
 
     /* ═══════ Render an entire project into the dashboard ═══════ */
@@ -2218,7 +2561,9 @@
       document.getElementById('officeVelocity').textContent  = vel.office.toFixed(1) + ' m²/day';
       document.getElementById('overallVelocity').textContent = vel.overall.toFixed(1) + ' m²/day';
 
-      // Leased-area mini bar chart (by category)
+      // Leased-area mini bar chart (by category) — created lazily on first render
+      // (after fitDashboard + real data), then updated in place thereafter.
+      createLeasedAreaChart();
       if (leasedAreaChart) {
         const la = leasedAreaByCategory(p);
         leasedAreaChart.data.labels = [la.retailLabel, la.officeLabel];
@@ -2226,7 +2571,8 @@
         leasedAreaChart.update();
       }
 
-      // Occupancy breakdown by tenant type
+      // Occupancy breakdown by tenant type — created lazily on first render.
+      createTypeBreakdownChart();
       if (typeBreakdownChart) {
         const bt = leasedAreaByType(p);
         typeBreakdownChart.data.labels = bt.labels;
@@ -2243,6 +2589,10 @@
 
       // Portfolio Occupancy by Building (data-driven; updates on project switch)
       renderBuildingOccupancy(p);
+
+      // After the DOM/layout settles, snap both charts to the rem-scaled container so
+      // they are never left oversized/clipped from an earlier layout. Reuses instances.
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(resizeDashboardCharts);
     }
 
     /* ═══════════════════════════════════════════════════
@@ -2293,8 +2643,9 @@
         camera.position.copy(camBase);
         camera.lookAt(0, 0.1, 0);
 
-        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); // cap 4K fill cost
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: QUALITY.occAntialias });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY.occPR)); // cap fill cost (per quality mode)
+        try { renderer.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); handleContextLoss('occupancy'); }, { once: true }); } catch (e) {}
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.08; /* calmer studio exposure — no blown highlights (brand: soft light) */
         renderer.domElement.className = 'occupancy-canvas';
@@ -2342,7 +2693,7 @@
         occupancyModelGroup.add(ring);
 
         const OUTER = 1.7, INNER = 1.04, DEPTH = 0.42;
-        // Leased arc: brushed-teal metal with a fine clearcoat sheen (premium finish).
+        // Leased arc: brushed lilac metal with a fine clearcoat sheen (premium finish).
         const leasedMat = new THREE.MeshPhysicalMaterial({
           color: 0xb9a6d9, metalness: 0.55, roughness: 0.3,
           clearcoat: 0.16, clearcoatRoughness: 0.6, envMapIntensity: 0.7,
@@ -2499,6 +2850,7 @@
     // Mount the centrepiece once Three.js is ready, then paint the live value.
     function initOccupancyCentrepiece() {
       if (occupancy || typeof THREE === 'undefined') return; // one renderer/scene/loop only
+      if (!QUALITY.occWebGL) return;                         // static mode → CSS conic-ring fallback shows the %
       const stage = document.getElementById('occupancyStage');
       if (!stage) return;
       // Idempotency: remove any stale renderer canvas from a previous init before rebuilding.
@@ -2511,10 +2863,17 @@
       }
     }
 
-    /* ═══════ Leased Area by Category — mini horizontal bar ═══════ */
-    const laCtx = document.getElementById('leasedAreaChart').getContext('2d');
-    const la0 = leasedAreaByCategory(projects[0]);
-    let leasedAreaChart = (typeof Chart === 'undefined') ? null : new Chart(laCtx, {
+    /* ═══════ Leased Area by Category — mini horizontal bar ═══════
+       Created LAZILY (Phase 4 fix): built on the FIRST render — i.e. AFTER fitDashboard()
+       has scaled the root font-size and AFTER real (live or demo) data exists. This
+       prevents (a) the chart being measured against the unscaled 1920px layout (which
+       made it oversized/clipped) and (b) it ever showing embedded data in live mode. */
+    let leasedAreaChart = null;
+    function createLeasedAreaChart() {
+      if (leasedAreaChart || typeof Chart === 'undefined') return;
+      const laCtx = document.getElementById('leasedAreaChart').getContext('2d');
+      const la0 = leasedAreaByCategory(projects[currentIndex]);
+      leasedAreaChart = new Chart(laCtx, {
       type: 'bar',
       data: {
         labels: [la0.retailLabel, la0.officeLabel],
@@ -2558,14 +2917,19 @@
             ticks: { color: '#d8d6dc', font: { family: 'Hanken Grotesk', size: 12, weight: '600' } }
           }
         },
-        animation: { duration: 600 }
+        animation: { duration: QUALITY.chartAnimMs }
       }
-    });
+      });
+    }
 
-    /* ═══════ Occupancy Breakdown by tenant type — mini horizontal bar ═══════ */
-    const btCtx = document.getElementById('typeBreakdownChart').getContext('2d');
-    const bt0 = leasedAreaByType(projects[0]);
-    let typeBreakdownChart = (typeof Chart === 'undefined') ? null : new Chart(btCtx, {
+    /* ═══════ Occupancy Breakdown by tenant type — mini horizontal bar ═══════
+       Lazily created on first render for the same reasons as the leased-area chart. */
+    let typeBreakdownChart = null;
+    function createTypeBreakdownChart() {
+      if (typeBreakdownChart || typeof Chart === 'undefined') return;
+      const btCtx = document.getElementById('typeBreakdownChart').getContext('2d');
+      const bt0 = leasedAreaByType(projects[currentIndex]);
+      typeBreakdownChart = new Chart(btCtx, {
       type: 'bar',
       data: {
         labels: bt0.labels,
@@ -2608,9 +2972,19 @@
             ticks: { color: '#d8d6dc', font: { family: 'Hanken Grotesk', size: 11, weight: '600' } }
           }
         },
-        animation: { duration: 600 }
+        animation: { duration: QUALITY.chartAnimMs }
       }
-    });
+      });
+    }
+
+    // Resize both mini charts to the current (rem-scaled) layout. Called after a
+    // render and after the layout settles / on genuine window resizes, so the canvas
+    // buffer always matches the fitDashboard-scaled container (no oversized/clipped
+    // charts). Chart.js reuses the instance — no recreation, no leak.
+    function resizeDashboardCharts() {
+      try { if (leasedAreaChart) leasedAreaChart.resize(); } catch (e) {}
+      try { if (typeBreakdownChart) typeBreakdownChart.resize(); } catch (e) {}
+    }
 
     /* ═══════ Clock — ticks every second ═══════ */
     function updateClock() {
@@ -2622,23 +2996,15 @@
       });
     }
 
-    /* ═══════ "Last Updated" — exact date & time of the last refresh ═══════ */
-    function stampLastUpdated() {
-      const now = new Date();
-      document.getElementById('lastUpdated').textContent = now.toLocaleString('en-US', {
-        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
-      });
-    }
-
-    /* ═══════ Simulated tenant refresh ═══════
-       A real deployment might re-check every 5 days; for the demo we check
-       every 30 seconds. Each check re-syncs the tenant list and stamps the
-       "Last Updated" time. */
-    const REFRESH_INTERVAL = 30 * 1000;
-    function simulateRefresh() {
-      renderTenants(projects[currentIndex]);
-      stampLastUpdated();
-    }
+    /* ═══════ LEGACY prototype refresh — DISABLED in Phase 4 ═══════
+       The old simulated 30-second refresh (which stamped a fake "Last Updated" time
+       from the wall clock) has been RETIRED. In live mode "Last Checked" comes only
+       from a successful /api/dashboard read (meta.checkedAt); in demo mode it is
+       stamped once at load. These helpers are intentionally NO LONGER SCHEDULED and
+       are kept only as dormant references — nothing calls them. Do not re-add a timer
+       that overwrites the API-driven "Last Checked". */
+    function stampLastUpdated() { /* dormant — superseded by setLastChecked() */ }
+    function simulateRefresh() { /* dormant — no simulated refresh timer in Phase 4 */ }
 
     /* ═══════ Live tenant search ═══════ */
     document.getElementById('tenantSearch').addEventListener('input', () => {
@@ -2660,6 +3026,44 @@
     let suppressScrollDetection = false;  // true while our own auto-scroll runs
     let suppressTimer = null;
 
+    /* ═══════ URL-based project selection (?project=slug) ═══════
+       Slugs are DERIVED from projects[].project ("Business Address" → "business-address",
+       "Town Center" → "town-center"), so new projects work automatically — no hardcoded
+       indexes. On load the requested project is selected BEFORE the first render (no
+       flash). Clicking a tab reflects the choice in the URL via history.replaceState —
+       no new history entries, other query params preserved — the simplest predictable
+       behaviour for an idle-TV dashboard. localStorage is intentionally not used. */
+    function projectSlug(name) {
+      return String(name)
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')   // spaces / underscores / punctuation / repeats → single hyphen
+        .replace(/^-+|-+$/g, '');      // strip leading & trailing hyphens
+    }
+    function projectIndexFromSlug(raw) {
+      const want = projectSlug(raw);
+      if (!want) return -1;
+      return projects.findIndex(p => projectSlug(p.project) === want);
+    }
+    // Read ?project on load; select it before the first render if valid, else keep default.
+    function applyProjectFromURL() {
+      try {
+        const raw = new URLSearchParams(window.location.search).get('project');
+        if (raw == null) return;                 // missing → keep the default project
+        const idx = projectIndexFromSlug(raw);
+        if (idx >= 0) currentIndex = idx;         // valid → select (before any render)
+        // invalid/malformed → keep default (currentIndex unchanged)
+      } catch (e) { /* malformed location → keep default */ }
+    }
+    // Reflect the current project in the URL without reloading or adding a history entry.
+    function updateURLForProject(index) {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set('project', projectSlug(projects[index].project)); // other params preserved
+        window.history.replaceState(null, '', url);
+      } catch (e) { /* history/URL unavailable (e.g. file://) → no-op, UI still switches */ }
+    }
+
     /* ═══════ Project selector tabs ═══════
        Tabs are built from the projects array, so adding another project object
        automatically adds another tab — no page changes required. */
@@ -2668,6 +3072,7 @@
       nav.innerHTML = '';
       projects.forEach((p, i) => {
         const btn = document.createElement('button');
+        btn.type = 'button';                      // explicit: a control, never a form submit
         btn.className = 'project-tab' + (i === currentIndex ? ' active' : '');
         btn.textContent = p.project;
         btn.dataset.index = i;
@@ -2688,6 +3093,7 @@
     function switchProject(index, animate = true) {
       const main = document.querySelector('.main');
       updateActiveTab(index);                             // instant tab highlight
+      updateURLForProject(index);                         // reflect in ?project (replaceState, no reload)
       const swap = () => { currentIndex = index; renderProject(projects[index]); };
       if (!animate) { swap(); return; }
       main.classList.add('is-switching');                 // fade out
@@ -2786,6 +3192,8 @@
         return;
       }
       fitDashboard(); // genuine window resize → re-fit
+      // Re-fit changes the rem-scaled container size; snap charts to it once layout settles.
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(resizeDashboardCharts);
     }
     window.addEventListener('resize', onWindowResize);
 
@@ -2797,16 +3205,267 @@
     }, { passive: true });
 
     /* ═══════════════════════════════════════════════════
+       PHASE 4 — LIVE DATA LAYER (SQLite API) vs STANDALONE DEMO
+       Served over http/https: the live data source is the local, same-origin,
+       read-only API GET /api/dashboard (SQLite-backed). It is polled every five
+       minutes; "Last Checked" reflects the API's meta.checkedAt; the view is
+       re-rendered only when meta.dataVersion changes; a failed poll keeps the last
+       good view (degraded) WITHOUT advancing "Last Checked". Opened via file://:
+       explicit DEMO mode using the embedded projects[] — no network, no polling.
+       (See CLAUDE.md §25. No Monday code; same-origin; no token; read-only.)
+       ═══════════════════════════════════════════════════ */
+    const DASHBOARD_API_URL = '/api/dashboard';
+    // Production default is exactly five minutes. A fast poll can be set ONLY for local
+    // development: either an explicit global set before init (used by automated tests),
+    // or a ?pollMs param that is honoured ONLY on localhost/127.0.0.1 (never over the
+    // LAN or a public host, never under file://) and clamped to ≥1s. A TV/kiosk pointed
+    // at the server's LAN IP therefore cannot set a dangerous fast rate.
+    const DASHBOARD_POLL_INTERVAL_MS = (function () {
+      try {
+        if (Number(window.__DASHBOARD_TEST_POLL_INTERVAL_MS__) > 0) return Number(window.__DASHBOARD_TEST_POLL_INTERVAL_MS__);
+        const host = window.location.hostname;
+        const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+        const q = new URLSearchParams(window.location.search).get('pollMs');
+        if (q && /^[0-9]+$/.test(q) && isLocalHost && window.location.protocol !== 'file:') return Math.max(1000, Number(q));
+      } catch (e) {}
+      return 5 * 60 * 1000;
+    })();
+    const API_REQUEST_TIMEOUT_MS = 10 * 1000;
+    const INITIAL_RETRY_MS = 30 * 1000;
+    const MAX_RETRY_MS = 5 * 60 * 1000;
+
+    function isDemoMode() {
+      try {
+        if (window.location.protocol === 'file:') return true;              // standalone file → demo
+        if (new URLSearchParams(window.location.search).get('mode') === 'demo') return true; // explicit dev opt-in
+      } catch (e) {}
+      return false;
+    }
+    const DASHBOARD_MODE_INITIAL = isDemoMode() ? 'demo' : 'live';
+
+    const dashboardState = {
+      mode: 'loading',              // demo | loading | live | degraded | error
+      meta: null,
+      currentDataVersion: null,
+      currentProjectSlug: null,
+      lastSuccessfulResponse: null,
+      lastCheckedAt: null,          // ISO from meta.checkedAt (NOT the wall clock)
+      requestInProgress: false,
+      consecutiveFailures: 0,
+      pollTimer: null,
+      retryTimer: null,
+      retryDelay: INITIAL_RETRY_MS,
+    };
+    let __dashboardDataRendered = false; // gates data-dependent Three.js visuals
+
+    // Design-safe status reflection: updates ONLY the existing refresh-bar value text
+    // and a hover tooltip + a data-conn attribute. No new banners/colours/layout.
+    function setConnectionState(state, detail) {
+      dashboardState.mode = state;
+      const bar = document.getElementById('refreshBar');
+      if (bar) bar.setAttribute('data-conn', state);
+      const val = document.getElementById('lastUpdated');
+      if (!val) return;
+      if (state === 'loading') val.textContent = 'Loading…';
+      else if (state === 'error') val.textContent = detail || 'Data unavailable';
+      val.title = ({
+        live: 'Live data from the local dashboard service',
+        degraded: 'Connection issue — showing last checked data',
+        error: 'Unable to reach the local data service',
+        loading: 'Loading data…',
+        demo: 'Standalone demo data (no server)',
+      })[state] || '';
+    }
+
+    function formatCheckedAt(iso) {
+      try {
+        return new Date(iso).toLocaleString('en-US', {
+          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+        });
+      } catch (e) { return '—'; }
+    }
+    // "Last Checked" is set ONLY from a successful API read's checkedAt (never a timer).
+    function setLastChecked(iso) {
+      dashboardState.lastCheckedAt = iso;
+      const val = document.getElementById('lastUpdated');
+      if (val) val.textContent = formatCheckedAt(iso);
+    }
+
+    function validateDashboardResponse(payload) {
+      if (!payload || typeof payload !== 'object') return false;
+      if (!payload.data || !payload.meta) return false;
+      if (!Array.isArray(payload.data.projects) || payload.data.projects.length === 0) return false;
+      const m = payload.meta;
+      if (typeof m.dataVersion !== 'string' || !m.dataVersion) return false;
+      if (typeof m.checkedAt !== 'string' || Number.isNaN(Date.parse(m.checkedAt))) return false;
+      for (const p of payload.data.projects) {
+        if (!p || typeof p.slug !== 'string' || typeof p.project !== 'string' || typeof p.address !== 'string') return false;
+        if (!p.retail || !Array.isArray(p.retail.tenants) || !Number.isFinite(p.retail.gla)) return false;
+        if (!p.office || !Array.isArray(p.office.tenants) || !Number.isFinite(p.office.gla)) return false;
+        if (!Array.isArray(p.buildings)) return false;
+      }
+      return true;
+    }
+
+    // Centralized adapter — the Phase 3 API already returns the frontend project shape,
+    // so this is mostly identity with defensive defaults. All field mapping lives HERE.
+    function adaptApiProjectToFrontendProject(ap) {
+      const cat = (c, fallbackLabel) => ({
+        label: (c && c.label) || fallbackLabel,
+        gla: c ? c.gla : 0,
+        ...(c && c.leasedPct != null ? { leasedPct: c.leasedPct } : {}),
+        tenants: (c && Array.isArray(c.tenants)) ? c.tenants : [],
+      });
+      return {
+        slug: ap.slug,
+        project: ap.project,
+        address: ap.address || '',
+        retail: cat(ap.retail, 'Retail'),
+        office: cat(ap.office, 'Offices'),
+        buildings: Array.isArray(ap.buildings) ? ap.buildings : [],
+        metrics: ap.metrics || null,
+      };
+    }
+
+    function getRequestedSlug() {
+      try {
+        const raw = new URLSearchParams(window.location.search).get('project');
+        return raw ? projectSlug(raw) : null;
+      } catch (e) { return null; }
+    }
+
+    async function fetchDashboardData() {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS);
+      try {
+        const res = await fetch(DASHBOARD_API_URL, {
+          method: 'GET', headers: { Accept: 'application/json' }, cache: 'no-store', signal: controller.signal,
+        });
+        if (!res.ok) throw new Error('api-status-' + res.status);
+        const payload = await res.json();
+        if (!validateDashboardResponse(payload)) throw new Error('invalid-payload');
+        return payload;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    // Apply a validated payload. Re-renders only on initial load or a dataVersion change;
+    // an unchanged poll updates only metadata + "Last Checked".
+    function applyDashboardPayload(payload, opts) {
+      const initial = !!(opts && opts.initial);
+      dashboardState.meta = payload.meta;
+      dashboardState.lastSuccessfulResponse = payload;
+      const newVersion = payload.meta.dataVersion;
+      const versionChanged = newVersion !== dashboardState.currentDataVersion;
+
+      if (initial || versionChanged) {
+        const newProjects = payload.data.projects.map(adaptApiProjectToFrontendProject);
+        const wantSlug = initial
+          ? (getRequestedSlug() || (newProjects[0] && newProjects[0].slug))
+          : (dashboardState.currentProjectSlug || (newProjects[0] && newProjects[0].slug));
+        projects = newProjects;                           // replace the in-memory set
+        let idx = projects.findIndex((p) => p.slug === wantSlug);
+        if (idx < 0) idx = 0;                             // invalid/removed slug → safe default
+        currentIndex = idx;
+        dashboardState.currentProjectSlug = projects[idx].slug;
+        dashboardState.currentDataVersion = newVersion;
+
+        __dashboardDataRendered = true;
+        renderTabs();
+        renderProject(projects[currentIndex]);
+        renderPerformanceSummary();
+        updateURLForProject(currentIndex);                // canonical slug in URL (no reload)
+        if (typeof THREE !== 'undefined') initThreeVisuals(); // mount/refresh 3D for this data
+        if (initial) onUserActivity();                    // arm idle paging once
+      }
+
+      setLastChecked(payload.meta.checkedAt);             // success → advance Last Checked
+      setConnectionState('live');
+      dashboardState.consecutiveFailures = 0;
+    }
+
+    function handleDashboardRequestFailure(error) {
+      dashboardState.consecutiveFailures++;
+      if (dashboardState.consecutiveFailures === 1) {     // log first failure only (no spam)
+        console.warn('[dashboard] /api/dashboard request failed:', error && error.message ? error.message : error);
+      }
+      if (dashboardState.lastSuccessfulResponse) {
+        setConnectionState('degraded');                   // keep last good view; Last Checked unchanged
+      } else {
+        setConnectionState('error');                      // never showed data → controlled error + retry
+        scheduleInitialRetry();
+      }
+    }
+
+    function scheduleInitialRetry() {
+      if (dashboardState.retryTimer) return;              // one retry timer only
+      dashboardState.retryTimer = setTimeout(async () => {
+        dashboardState.retryTimer = null;
+        await bootstrapLiveData();
+        dashboardState.retryDelay = Math.min(dashboardState.retryDelay * 2, MAX_RETRY_MS); // capped backoff
+      }, dashboardState.retryDelay);
+    }
+
+    async function pollOnce(isInitial) {
+      if (dashboardState.requestInProgress) return;       // skip overlapping request (no queue)
+      dashboardState.requestInProgress = true;
+      try {
+        const payload = await fetchDashboardData();
+        applyDashboardPayload(payload, { initial: isInitial });
+        dashboardState.retryDelay = INITIAL_RETRY_MS;     // reset backoff after success
+      } catch (err) {
+        handleDashboardRequestFailure(err);
+        throw err;
+      } finally {
+        dashboardState.requestInProgress = false;         // always release the lock
+      }
+    }
+
+    function startDashboardPolling() {
+      stopDashboardPolling();                             // never stack intervals
+      dashboardState.pollTimer = setInterval(() => {
+        if (document.hidden) return;                      // don't poll a hidden tab
+        pollOnce(false).catch(() => {});
+      }, DASHBOARD_POLL_INTERVAL_MS);
+    }
+    function stopDashboardPolling() {
+      if (dashboardState.pollTimer) { clearInterval(dashboardState.pollTimer); dashboardState.pollTimer = null; }
+    }
+
+    async function bootstrapLiveData() {
+      try {
+        await pollOnce(true);                             // first successful read renders + selects
+        startDashboardPolling();                          // begin 5-min polling only after success
+      } catch (e) { /* failure handled: error state + retry already scheduled */ }
+    }
+
+    // On returning to a visible tab, do ONE immediate check if the last success is stale.
+    function onVisibleMaybeCheck() {
+      if (document.hidden || dashboardState.mode === 'demo') return;
+      const last = dashboardState.lastCheckedAt ? Date.parse(dashboardState.lastCheckedAt) : 0;
+      if (!last || (Date.now() - last) >= DASHBOARD_POLL_INTERVAL_MS) pollOnce(false).catch(() => {});
+    }
+
+    /* ═══════════════════════════════════════════════════
        INIT
        ═══════════════════════════════════════════════════ */
     fitDashboard();                        // scale the composition (root font-size) to the display
     // Re-apply once the brand font is loaded so any font-metric-dependent layout is
     // measured with Hanken Grotesk, not the fallback (#10). Cheap; no visual change at 1:1.
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitDashboard);
-    assignMockLeaseDates();                // fill mock leaseDates (Monday.com-ready)
-    renderTabs();                          // build the project selector tabs
-    renderProject(projects[currentIndex]); // initial paint (Business Address)
-    renderPerformanceSummary();            // trend ribbon (mock; Monday.com-ready)
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fitDashboard(); resizeDashboardCharts(); });
+
+    // DATA RENDER — mode-aware (Phase 4). DEMO renders the embedded projects[] now
+    // (unchanged behaviour). LIVE defers ALL data rendering to the first API response
+    // (INIT tail below), so embedded values are never shown as if they were live.
+    if (DASHBOARD_MODE_INITIAL === 'demo') {
+      assignMockLeaseDates();              // fill mock leaseDates (demo only)
+      applyProjectFromURL();               // honour ?project=… BEFORE the first render (no flash)
+      __dashboardDataRendered = true;
+      renderTabs();                        // build the project selector tabs (active = current)
+      renderProject(projects[currentIndex]); // initial paint (default = Business Address)
+      renderPerformanceSummary();          // trend ribbon (mock; per-project data arrives with Monday)
+    }
     /* ═══════════════════════════════════════════════════
        PARTICLE-WAVE BACKGROUND (Three.js)
        One scene / camera / renderer / Points object / loop. ~28k points on a fixed
@@ -2821,6 +3480,7 @@
     let waveBg = null;
     function initWaveBackground() {
       if (waveBg || typeof THREE === 'undefined') return;   // one instance only
+      if (!QUALITY.waveWebGL) return;                       // static mode → CSS ground shows (no WebGL loop)
       const canvas = document.getElementById('waveBackgroundCanvas');
       if (!canvas) return;
       try {
@@ -2831,14 +3491,16 @@
         camera.position.copy(camBase);
         camera.lookAt(lookTarget);
 
-        const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-        const PR = Math.min(window.devicePixelRatio || 1, 1.5);   // cap 4K fill cost
+        const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: QUALITY.waveAntialias });
+        const PR = Math.min(window.devicePixelRatio || 1, QUALITY.wavePR);   // cap fill cost (per quality mode)
         renderer.setPixelRatio(PR);
         renderer.setSize(window.innerWidth, window.innerHeight, false); // CSS owns display size
         renderer.setClearColor(0x000000, 0);                 // transparent → CSS ground shows
+        try { canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); handleContextLoss('wave'); }, { once: true }); } catch (e) {}
 
-        // ── Grid of points (fixed X/Z; Y animated in the shader) ──
-        const COLS = 220, ROWS = 130;            // ≈ 28,600 points
+        // ── Grid of points (fixed X/Z; Y animated in the shader). Count is quality-driven:
+        //    full 220×130 ≈ 28,600 · reduced 132×78 ≈ 10,296 · (static: no WebGL wave). ──
+        const COLS = QUALITY.particleCols || 220, ROWS = QUALITY.particleRows || 130;
         const GW = 120, GD = 82;                 // grid width (x) / depth (z)
         const count = COLS * ROWS;
         const positions = new Float32Array(count * 3);
@@ -2976,18 +3638,237 @@
     }
 
     // Three.js visuals load asynchronously (ESM module) — mount them once ready.
+    // The particle-wave background is data-independent and mounts immediately; the
+    // data-dependent occupancy ring + tenant medallions mount only once data has been
+    // rendered (so live mode doesn't paint embedded values during loading).
+    let __qualityRuntimeStarted = false;
     function initThreeVisuals() {
-      initWaveBackground();                     // full-screen particle-wave background
-      initOccupancyCentrepiece();               // mount the signature 3D occupancy model
-      renderTopTenants(projects[currentIndex]); // re-mount plaques with 3D medallions
+      initWaveBackground();                       // full-screen particle-wave background (quality-gated)
+      if (!__dashboardDataRendered) return;       // defer data visuals until data exists
+      initOccupancyCentrepiece();                 // guarded: one renderer/scene/loop (quality-gated)
+      renderTopTenants(projects[currentIndex]);   // re-mount plaques (WebGL or DOM per quality)
+      // Once real data + visuals are mounted, start the (auto) probe + monitor ONCE, so we
+      // benchmark the actual animated dashboard rather than an idle pre-data page.
+      if (!__qualityRuntimeStarted) {
+        __qualityRuntimeStarted = true;
+        updateQualityDebug();
+        logQualityDecisionChain('startup');   // dev/localhost only — the initial (pre-probe) chain
+        runStartupProbe();
+        scheduleRuntimeMonitor();
+      }
     }
     if (typeof THREE !== 'undefined') initThreeVisuals();
     else window.addEventListener('three-ready', initThreeVisuals, { once: true });
+
+    /* ═══════════════════════════════════════════════════
+       QUALITY RUNTIME — apply transitions, startup probe, light monitor, context loss.
+       Switching mode never reloads and never touches data/project/search: it only
+       rebuilds the affected visuals and updates chart animation duration in place.
+       ═══════════════════════════════════════════════════ */
+    function applyQualityMode(newMode, reason, opts) {
+      if (QUALITY_MODES.indexOf(newMode) < 0 || newMode === QUALITY.mode) return false;
+      const prev = QUALITY.mode;
+      QUALITY = qualityConfigFor(newMode);
+      performanceProfile.resolvedMode = newMode;
+      performanceProfile.reason = reason || 'apply';
+      performanceProfile.config = QUALITY;
+      // Persistence is OPT-IN: a change is durable ONLY when the caller passes
+      // {persist:true} (manual selection or a healthy startup benchmark). Runtime-monitor,
+      // probe-poor and context-loss downgrades are SESSION-ONLY — they never write storage,
+      // so a transient slowdown cannot poison the next startup.
+      const willPersist = !!(opts && opts.persist);
+      performanceProfile.downgradeHistory.push({ from: prev, to: newMode, reason: reason || 'apply',
+        at: new Date().toISOString(), persisted: willPersist, source: (opts && opts.source) || reason || 'apply',
+        sample: (opts && opts.sample) || performanceProfile.probe || null });
+      try { document.documentElement.setAttribute('data-quality', newMode); } catch (e) {}
+      if (willPersist) writeQualityPreference(newMode, (opts && opts.source) || reason || 'apply');
+
+      // Particle wave: rebuild for the new grid/PR/AA, or tear down for static.
+      if (waveBg) { try { waveBg.dispose(); } catch (e) {} waveBg = null; }
+      if (QUALITY.waveWebGL) initWaveBackground();
+
+      // Occupancy: tear down WebGL for static (CSS fallback shows) or (re)mount for full/reduced.
+      const stage = document.getElementById('occupancyStage');
+      if (!QUALITY.occWebGL) {
+        if (occupancy) { try { occupancy.dispose(); } catch (e) {} occupancy = null; }
+        if (stage) {
+          stage.classList.remove('has-3d');                       // reveal CSS conic-ring fallback
+          const m = computeMetrics(projects[currentIndex]);
+          stage.style.setProperty('--leased-turn', (m.totalGLA ? (m.totalLeased / m.totalGLA) : 0).toFixed(4) + 'turn');
+        }
+      } else if (!occupancy && __dashboardDataRendered && typeof THREE !== 'undefined') {
+        initOccupancyCentrepiece();
+      }
+
+      // Medallions: re-mount in the new mode (WebGL coins vs flat DOM). Disposes old ones.
+      if (__dashboardDataRendered) { disposeMedallions(); renderTopTenants(projects[currentIndex]); }
+
+      // Charts: update animation duration in place (never recreate).
+      try { if (leasedAreaChart) leasedAreaChart.options.animation.duration = QUALITY.chartAnimMs; } catch (e) {}
+      try { if (typeBreakdownChart) typeBreakdownChart.options.animation.duration = QUALITY.chartAnimMs; } catch (e) {}
+
+      updateQualityDebug();
+      console.info('[quality] ' + prev + ' → ' + newMode + ' (' + (reason || 'apply') + ')');
+      return true;
+    }
+
+    // Persistent WebGL failure → degrade to static once, safely (keeps all data/layout).
+    let __contextLossHandled = false;
+    function handleContextLoss(which) {
+      if (__contextLossHandled) return;
+      __contextLossHandled = true;
+      console.warn('[quality] WebGL context lost (' + which + ') → falling back to static');
+      applyQualityMode('static', 'context-loss', { persist: false, source: 'context-loss' }); // session-only
+    }
+
+    // ── Bounded frame-time sampler (ignores hidden frames) → callback(stats|null) ──
+    function sampleFrames(durationMs, cb) {
+      if (typeof requestAnimationFrame !== 'function') { cb(null); return; }
+      const dts = []; let last = null; const start = performance.now();
+      function tick() {
+        const now = performance.now();
+        if (!document.hidden) {
+          if (last != null) dts.push(now - last);
+          last = now;
+        } else { last = null; } // don't count the gap across a hidden period
+        if (now - start < durationMs) requestAnimationFrame(tick);
+        else {
+          if (dts.length < 8) { cb(null); return; }
+          dts.sort((a, b) => a - b);
+          const median = dts[Math.floor(dts.length / 2)];
+          const p95 = dts[Math.floor(dts.length * 0.95)];
+          cb({ frames: dts.length, medianMs: median, p95Ms: p95, fps: Math.round(1000 / (dts.reduce((a, b) => a + b, 0) / dts.length)) });
+        }
+      }
+      requestAnimationFrame(tick);
+    }
+
+    // Startup probe (auto only, no stored preference): start reduced, upgrade to full when
+    // clearly healthy, downgrade to static when clearly poor. Thresholds documented + gated
+    // by hysteresis (single decision). Healthy: median ≤ 20ms AND p95 ≤ 34ms (~48fps+).
+    // Poor: median ≥ 42ms (~≤24fps). Otherwise stay reduced.
+    function runStartupProbe() {
+      if (!performanceProfile.shouldProbe) return;   // only for auto with no prior preference
+      sampleFrames(1500, (s) => {
+        performanceProfile.probe = s;
+        // No usable samples → stay at the current initial mode, DON'T persist (re-probe next load).
+        if (!s) { logQualityDecisionChain('post-probe:nodata'); return; }
+        // A healthy or medium benchmark is a legitimate, durable "what this machine can do
+        // today" result → persist as 'startup-benchmark'. A POOR result is a protective
+        // downgrade → SESSION-ONLY (persist:false), so it re-benchmarks next startup.
+        if (s.medianMs <= 20 && s.p95Ms <= 34) applyQualityMode('full', 'startup-benchmark', { persist: true, source: 'startup-benchmark', sample: s });
+        else if (s.medianMs >= 42) applyQualityMode('static', 'probe-poor', { persist: false, source: 'probe-poor', sample: s });
+        else writeQualityPreference('reduced', 'startup-benchmark'); // stays reduced (durable initial; re-verified next load)
+        updateQualityDebug();
+        logQualityDecisionChain('post-probe');
+      });
+    }
+
+    // Light runtime monitor: a short bounded sample every 60s (only in auto). It still
+    // protects weak devices (full→reduced→static) but requires TWO CONSECUTIVE poor windows
+    // before downgrading (item 7) — so a single GC pause / heavy poll / project switch /
+    // transient spike can't trigger degradation. Downgrades are SESSION-ONLY (persist:false):
+    // after a browser restart Auto re-benchmarks and a capable machine recovers. Anti-
+    // oscillation preserved: one downgrade per stabilization period, NEVER auto-upgrades.
+    const RUNTIME_CHECK_MS = 60 * 1000, RUNTIME_STABILIZE_MS = 120 * 1000, RUNTIME_POOR_STREAK = 2;
+    function scheduleRuntimeMonitor() {
+      if (performanceProfile.requested !== 'auto') return; // manual override → no auto changes
+      performanceProfile.monitor.poorStreak = 0;
+      performanceProfile.monitor.timer = setTimeout(function check() {
+        if (!document.hidden && QUALITY.mode !== 'static') {
+          sampleFrames(2000, (s) => {
+            if (!s) { /* no usable samples (e.g. just became visible) → don't count */ }
+            else if (s.medianMs >= 45) {
+              performanceProfile.monitor.poorStreak = (performanceProfile.monitor.poorStreak || 0) + 1;
+              if (performanceProfile.monitor.poorStreak >= RUNTIME_POOR_STREAK &&
+                  (Date.now() - performanceProfile.monitor.lastDowngradeAt) > RUNTIME_STABILIZE_MS) {
+                performanceProfile.monitor.lastDowngradeAt = Date.now();
+                performanceProfile.monitor.poorStreak = 0;
+                applyQualityMode(QUALITY.mode === 'full' ? 'reduced' : 'static', 'runtime-monitor', { persist: false, source: 'runtime-monitor', sample: s });
+              }
+            } else {
+              performanceProfile.monitor.poorStreak = 0; // a healthy window breaks the streak
+            }
+          });
+        }
+        performanceProfile.monitor.timer = setTimeout(check, RUNTIME_CHECK_MS);
+      }, RUNTIME_CHECK_MS);
+    }
+
+    // Dev-only diagnostics overlay: ?qualityDebug=1 on localhost only. No secrets/data.
+    function qualityDebugEnabled() {
+      try {
+        const on = new URLSearchParams(window.location.search).get('qualityDebug') === '1';
+        const local = ['localhost', '127.0.0.1', '::1'].indexOf(window.location.hostname) >= 0;
+        return on && local;
+      } catch (e) { return false; }
+    }
+    let __qualityDebugEl = null;
+    function updateQualityDebug() {
+      if (!qualityDebugEnabled()) return;
+      if (!__qualityDebugEl) {
+        __qualityDebugEl = document.createElement('div');
+        __qualityDebugEl.setAttribute('style', 'position:fixed;left:8px;bottom:8px;z-index:99999;font:11px/1.4 monospace;color:#b9a6d9;background:rgba(13,12,16,.82);border:1px solid #2b2833;border-radius:6px;padding:6px 9px;pointer-events:none;white-space:pre;');
+        document.body.appendChild(__qualityDebugEl);
+      }
+      const c = performanceProfile.capabilities, p = performanceProfile.probe;
+      __qualityDebugEl.textContent =
+        'quality: ' + QUALITY.mode + '  (req ' + performanceProfile.requested + ', ' + performanceProfile.reason + ')\n' +
+        'webgl ' + c.webgl + '/gl2 ' + c.webgl2 + '  cores ' + c.cores + '  mem ' + c.memory + '  dpr ' + c.dpr + '\n' +
+        'particles ' + (QUALITY.particleCols * QUALITY.particleRows) + '  wavePR ' + QUALITY.wavePR + '  occ ' + QUALITY.occWebGL + '  medallion ' + QUALITY.medallionMode + '\n' +
+        'canvases ' + document.querySelectorAll('canvas').length + (p ? ('  probe ' + p.fps + 'fps med ' + Math.round(p.medianMs) + 'ms') : '');
+    }
+    // FULL decision-chain report (development/localhost only). Also exposed as
+    // window.__qualityReport() so it can be inspected in the console at any time.
+    function qualityDecisionReport() {
+      const c = performanceProfile.capabilities, p = performanceProfile.probe;
+      return {
+        requested: performanceProfile.requested,
+        urlOverride: performanceProfile.urlOverride,
+        initialResolvedMode: performanceProfile.initialResolvedMode,
+        initialReason: performanceProfile.initialReason,
+        resolvedMode: QUALITY.mode,
+        reason: performanceProfile.reason,
+        storedPreferenceRaw: performanceProfile.storedPreferenceRaw,
+        storedPreference: performanceProfile.storedPreference,
+        storedSource: performanceProfile.storedPreference ? (performanceProfile.storedPreference.source || 'legacy') : null,
+        benchmark: p ? { medianMs: p.medianMs, p95Ms: p.p95Ms, avgFps: p.fps, frames: p.frames } : null,
+        benchmarkRan: !!performanceProfile.shouldProbe,
+        benchmarkSkippedReason: performanceProfile.shouldProbe ? null : performanceProfile.initialReason, // e.g. 'manual-preference' / 'no-webgl'
+        durableSources: DURABLE_PREF_SOURCES,
+        sessionOnlyDowngrades: performanceProfile.downgradeHistory.filter((d) => !d.persisted).map((d) => d.reason),
+        capabilities: { webgl: c.webgl, webgl2: c.webgl2, cores: c.cores, deviceMemory: c.memory, dpr: c.dpr, reducedMotion: c.reducedMotion, saveData: c.saveData },
+        visibilityAtStart: performanceProfile.visibilityAtStart,
+        visibilityNow: (typeof document !== 'undefined' ? document.visibilityState : null),
+        downgradeHistory: performanceProfile.downgradeHistory,
+        lastDowngradeAt: performanceProfile.monitor.lastDowngradeAt,
+      };
+    }
+    try { window.__qualityReport = qualityDecisionReport; window.__quality = performanceProfile; } catch (e) {}
+    function logQualityDecisionChain(tag) {
+      if (!qualityDebugEnabled()) return; // localhost + ?qualityDebug=1 only
+      try { console.info('[quality] decision chain' + (tag ? ' (' + tag + ')' : '') + ':\n' + JSON.stringify(qualityDecisionReport(), null, 2)); } catch (e) {}
+    }
+    window.addEventListener('beforeunload', () => { if (performanceProfile.monitor.timer) clearTimeout(performanceProfile.monitor.timer); });
+
     updateClock();
-    stampLastUpdated();
-    setInterval(updateClock, 1000);
-    setInterval(simulateRefresh, REFRESH_INTERVAL);
-    onUserActivity();                      // arm the 10-minute idle timer
+    setInterval(updateClock, 1000);        // wall clock — independent of "Last Checked"
+
+    if (DASHBOARD_MODE_INITIAL === 'demo') {
+      // Standalone demo: embedded data already rendered above. Stamp a demo "Last
+      // Checked" once. No API request, no polling, no simulated 30s refresh timer.
+      setConnectionState('demo');
+      setLastChecked(new Date().toISOString());
+      onUserActivity();                    // arm the 10-minute idle timer
+    } else {
+      // Live: defer data to the SQLite API. Restrained loading state, one fetch, then
+      // poll every five minutes. "Last Checked" comes only from successful API reads;
+      // there is deliberately no simulated refresh timer in live mode.
+      setConnectionState('loading');
+      bootstrapLiveData();
+      document.addEventListener('visibilitychange', onVisibleMaybeCheck);
+      window.addEventListener('beforeunload', stopDashboardPolling);
+    }
   </script>
 </body>
 </html>
