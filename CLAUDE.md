@@ -2497,3 +2497,98 @@ a single captured snapshot (the documented `INSUFFICIENT_HISTORY` case → the U
   "live server required" state.
 - On-hardware TV validation of the overlay was not performed (no device); it reuses the quality
   controller's `chartAnimMs` gate, so `static` mode yields instant charts.
+
+---
+
+## 41. PHASE 9.4A — PRODUCTION READINESS
+
+> **Status: complete.** Operational hardening for a permanent server deployment — NO new
+> business features, NO architecture change, NO business-logic / analytics / snapshot /
+> Monday-mapping change. Everything from Phases 1–9.3 functions exactly as before; all
+> additions are additive and only take effect when the server is actually started
+> (importing `app` for tests does not validate/exit, configure file logging, or install
+> process handlers). Git is the official VCS; work landed as focused commits.
+
+### 41.1 Production configuration (`config/`)
+New `config/index.js` (+ `production.js`, `development.js`, `validation.js`) — an ADDITIVE
+facade over the existing env handling (it does not replace `server/config/*`,
+`monday/config.js`, or `automation-config.js`). `loadConfig()` reads the environment and
+**bridges the spec's alias names to the canonical ones the code already uses** (one
+idempotent side effect, canonical always wins): `DATABASE_PATH→SQLITE_DB_PATH`,
+`SNAPSHOT_SCHEDULE→HISTORY_SNAPSHOT_TIME`, `TIMEZONE→HISTORY_TIMEZONE`
+(`MONDAY_API_TOKEN→MONDAY_API_KEY` is already handled in `monday/config.js`). Board IDs
+deliberately remain in `config/monday-mapping.json` (§28.2), never an env var. A
+production/development profile sets strictness. `validateConfigOrExit()` validates and, in
+production, prints a clear secret-free error and **exits non-zero** on any problem (bad
+PORT/LOG_LEVEL/snapshot-time, `TIMEZONE≠Asia/Riyadh`, non-writable DB dir, or
+sync-enabled-without-token/mapping); development downgrades provisioning issues to warnings.
+`describe()` is secret-free. Validation runs at the top of `startServer()` only.
+
+### 41.2 Centralized logging (`server/logger.js`)
+Zero-dependency logger: levels `error<warn<info<debug` gated by `LOG_LEVEL`; each entry has
+ISO timestamp, level, source, message, optional context. Console (stderr for warn/error,
+stdout otherwise — PM2 captures it) **plus** `logs/dashboard.log` (one JSON line/entry) when
+a log dir is configured; file writes are wrapped so logging never throws. **Secrets are
+redacted by key** (token/apiKey/authorization/password/secret/cookie). The `(message,
+context)` signature matches the scheduler/Monday `(evt, ctx)` shape, so the history/scheduler
+logs now flow through the same logger (source `history`). Startup, DB-ready, scheduler,
+listening, and shutdown are logged.
+
+### 41.3 Server integration (`server/server.js`, additive)
+- **Config validate-or-exit** + **logger file config** at the top of `startServer()` (never
+  at module load, so tests importing `app` are unaffected).
+- **Safe headers** (module scope, so `app` always has them): `X-Content-Type-Options:nosniff`,
+  `X-Frame-Options:SAMEORIGIN`, `Referrer-Policy:no-referrer`, `X-DNS-Prefetch-Control:off`,
+  and `x-powered-by` disabled. **No CSP** (the inline-script + CDN dashboard would break).
+- **`/health` enriched** (still liveness, always 200): adds `version`, `environment`,
+  `uptime`, `database` (`ready`/`unavailable`), `scheduler` (`running`/`idle`/`disabled`).
+  `/ready` unchanged.
+- **Process safety** (installed only by `startServer`): `unhandledRejection` is logged but
+  does not kill the host (availability); `uncaughtException` is logged, SQLite is closed, and
+  the process exits non-zero for a clean PM2 restart.
+- **Database safety:** after init, the DB file must be writable (abort with a clear message
+  otherwise); FK-ON + WAL are already hard-verified on open (§23.4). Graceful shutdown
+  (SIGINT/SIGTERM → stop scheduler → await active capture → close SQLite) was already present.
+
+### 41.4 Process management (`ecosystem.config.js`)
+PM2 app: **`instances:1`, `exec_mode:'fork'`** (SQLite single-writer — never cluster),
+`autorestart`, `exp_backoff_restart_delay`, `max_memory_restart:'512M'`, `kill_timeout:8000`
+(room for graceful shutdown), PM2 logs under `logs/`, `env_production.NODE_ENV=production`
+(no secrets in the committed file). Reboot persistence via `pm2 save` + `pm2 startup`
+(documented, not auto-installed).
+
+### 41.5 Ops scripts + hygiene
+- `npm run lint` → `scripts/lint.js`: dependency-free V8 parse (`vm.Script`) over all project
+  `.js` (127 files) — a real syntax gate without adding ESLint (a documented future option).
+- `npm run backup` → `scripts/backup.js`: consistent online copy via `better-sqlite3`
+  `.backup()` to `data/backups/dashboard-<UTC>.db`, integrity-checked; `BACKUP_KEEP=N` prunes.
+- `npm run restore <file> [--confirm]` → `scripts/restore.js`: validates the backup
+  (`integrity_check` + `schema_migrations`) BEFORE overwriting, safety-copies the current DB,
+  clears stale `-wal`/`-shm`, re-verifies. Refuses without `--confirm`.
+- `.gitignore` adds `logs/`, `coverage/`, `tmp/`. `.env.example` documents `NODE_ENV`,
+  `LOG_LEVEL`, and the alias vars. `npm test` now includes `test:production` (14 tests).
+
+### 41.6 Documentation
+README gains a "Production deployment (Phase 9.4A)" section (config/validation, logging,
+PM2, backup/restore, scripts) and an enriched `/health` description; new
+`DEPLOYMENT_CHECKLIST.md` covers install → clone → npm install → `.env` → migrate → PM2 →
+verify `/health` → Monday → scheduler → snapshots → dashboard, plus backup/restore, update,
+rollback, and a pre-flight.
+
+### 41.7 Security review
+No committed secrets (`.env`/`*.db*`/`node_modules/`/`logs/`/`config/monday-mapping.json`
+all gitignored; `.env.example` placeholders only); token is env-only, non-enumerable, and
+redacted from logs; no debug endpoints (the `?qualityDebug` overlay is localhost-only, client
+only); safe headers added; inputs validated by the existing route validators; error responses
+stay generic (no stack/path/SQL). The production config **fails closed** on missing/invalid
+values.
+
+### 41.8 Tests / regression
+New `tests/production/{config,logger}.test.js` (14). Full suite **282** offline
+(seed 28, api 11, frontend 71, production 14, monday 49, history 109), all green; `npm run
+verify` all stages green; `npm run lint` clean. Manual production smoke (headless, on a
+disposable DB copy, `NODE_ENV=production`): valid config → enriched `/health` (environment
+`production`, `database:ready`), safe headers present, `x-powered-by` absent, logs written to
+console + `logs/dashboard.log`; an invalid `TIMEZONE=UTC` **aborts** with a clear FATAL
+message and never serves. No regressions to the historical dashboard, executive summaries,
+comparisons, scheduler, historical APIs, Monday sync, or the frontend.

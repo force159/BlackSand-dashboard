@@ -350,12 +350,85 @@ Standalone demo mode: **double-click `Project Dashboard.html`** (or open it via
 
 ## Health and readiness endpoints
 
-- `GET /health` — **liveness**: the Node process is alive. Does not depend on the
-  database or Monday, so it stays `200` even while data is being configured.
+- `GET /health` — **liveness**: the Node process is alive. Stays `200` even while data is
+  being configured (it never depends on the DB/Monday for its status). It now also reports
+  operational info for monitoring: `status`, `service`, `version`, `environment`, `uptime`
+  (seconds), `database` (`ready`/`unavailable`), `scheduler` (`running`/`idle`/`disabled`),
+  and `timestamp`. No secret, path, or stack is exposed.
 - `GET /ready` — **readiness**: the database is open with a current, valid schema.
   Returns `200` `{ status: "ready", database: "ready", schemaVersion, … }` (the
   current schema version) when ready, or `503` when not. It intentionally exposes
   **no** database path, table names, pragma details, or environment values.
+
+---
+
+## Production deployment (Phase 9.4A)
+
+For a permanent office-server deployment (as opposed to `npm start` in a terminal), run
+the server under **PM2** so it restarts on crash and after reboot, with validated
+configuration and centralized logs. **No business logic changed** — this is operational
+hardening only. The full step-by-step is in **`DEPLOYMENT_CHECKLIST.md`**.
+
+### Production configuration & validation
+
+- Set `NODE_ENV=production` in `.env`. In production, configuration is **validated at
+  startup**; an invalid value prints a clear, secret-free error and the server **exits
+  non-zero** (it never serves misconfigured). In development the same issues are warnings.
+- Recognized variables (see `.env.example`): `NODE_ENV`, `PORT`, `HOST`, `LOG_LEVEL`,
+  `SQLITE_DB_PATH` (alias `DATABASE_PATH`), `HISTORY_SNAPSHOT_TIME` (alias
+  `SNAPSHOT_SCHEDULE`), `HISTORY_TIMEZONE` (alias `TIMEZONE`), `MONDAY_API_KEY` (alias
+  `MONDAY_API_TOKEN`), `MONDAY_SYNC_ENABLED`. Monday **board IDs** live in
+  `config/monday-mapping.json`, not in an env var.
+- The config layer lives in `config/` (`index.js`, `production.js`, `development.js`,
+  `validation.js`). It is an additive facade over the existing env handling.
+
+### Logging
+
+- Centralized logger (`server/logger.js`): levels `error|warn|info|debug` gated by
+  `LOG_LEVEL`. Each entry has a timestamp, level, source, message, and optional context;
+  **secrets are redacted** by key. Output goes to the console (captured by PM2) **and** to
+  `logs/dashboard.log` (one JSON line per entry). `logs/` is gitignored.
+
+### PM2
+
+```bash
+npm install -g pm2
+pm2 start ecosystem.config.js --env production   # 1 instance (SQLite is single-writer)
+pm2 save                                          # remember the process list
+pm2 startup                                       # print the reboot command; run it once (admin)
+pm2 status | pm2 logs blacksand-dashboard
+```
+
+`ecosystem.config.js` pins **`instances: 1`, `exec_mode: fork`** (never cluster — exactly
+one process may own the SQLite file), `autorestart`, `max_memory_restart: 512M`, and a
+`kill_timeout` generous enough for graceful shutdown. Graceful shutdown (SIGINT/SIGTERM)
+stops the scheduler, waits for any active snapshot, then closes SQLite.
+
+### Backup & restore
+
+```bash
+npm run backup                       # consistent online copy → data/backups/dashboard-<UTC>.db
+BACKUP_KEEP=14 npm run backup        # keep only the newest 14 backups
+npm run restore <backup-file>            # preview (no changes)
+# STOP the server first, then:
+npm run restore <backup-file> --confirm  # validates the backup, safety-copies the current DB, restores
+```
+
+Backups are validated (`integrity_check`) on creation; restore validates the backup
+**before** overwriting and safety-copies the current DB first. The database lives at
+`SQLITE_DB_PATH` (default `data/dashboard.db`); `data/*.db*` and `data/backups/` are
+gitignored and must be backed up out-of-band as part of server backups.
+
+### Production scripts
+
+```bash
+npm start     # run the server (validates config first)
+npm run dev   # dev with --watch
+npm test      # full offline test suite (seed/api/frontend/production/monday/history)
+npm run lint  # dependency-free syntax gate over all project .js
+npm run backup / npm run restore   # see above
+npm run verify# consolidated non-destructive checks + all test suites
+```
 
 ---
 
