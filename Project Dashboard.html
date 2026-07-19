@@ -207,7 +207,7 @@
     .header-updated .label {
       font-size: 0.625rem;
       font-weight: 600;
-      color: var(--white-30);
+      color: var(--accent-hi);      /* Phase 10: purple "Last Checked" label */
       text-transform: uppercase;
       letter-spacing: 0.0625rem;
     }
@@ -436,9 +436,9 @@
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.0625rem;
-      color: var(--white-50);
+      color: var(--accent-hi);      /* Phase 10: purple panel title */
     }
-    .vel-panel-sub { font-size: 0.5625rem; font-weight: 500; color: var(--white-30); }
+    .vel-panel-sub { font-size: 0.5625rem; font-weight: 500; color: var(--accent-hi); }  /* Phase 10 */
     .vel-line {
       display: flex;
       align-items: baseline;
@@ -447,7 +447,7 @@
       border-top: 0.0625rem solid var(--hairline);
     }
     .vel-line:first-of-type { border-top: none; }
-    .vel-line-label { font-size: 0.75rem; font-weight: 500; color: var(--white-50); }
+    .vel-line-label { font-size: 0.75rem; font-weight: 500; color: var(--accent-hi); }  /* Phase 10 */
     .vel-line-val {
       font-size: 1.125rem;
       font-weight: 600;
@@ -619,7 +619,7 @@
     .prop-card .gla-label {
       font-size: 0.6875rem;
       font-weight: 500;
-      color: var(--white-30);
+      color: var(--accent-hi);      /* Phase 10: purple supporting label */
       margin-top: 0.125rem;
       margin-bottom: 0.5rem;
     }
@@ -640,7 +640,7 @@
     .prop-card .leased-label {
       font-size: 0.6875rem;
       font-weight: 500;
-      color: var(--white-30);
+      color: var(--accent-hi);      /* Phase 10: purple supporting label */
     }
 
     .progress-bar {
@@ -679,7 +679,7 @@
     .velocity-card .vel-sub {
       font-size: 0.5625rem;
       font-weight: 500;
-      color: var(--white-30);
+      color: var(--accent-hi);      /* Phase 10: purple caption */
       margin-top: 0.25rem;
     }
     /* Summary metric accented in lilac (matching "Overall Leased") — the single
@@ -701,7 +701,7 @@
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.0625rem;
-      color: var(--white-30);
+      color: var(--accent-hi);      /* Phase 10: purple trend-ribbon title */
       margin-bottom: 0.3125rem;
     }
     .perf-valrow { display: flex; align-items: center; gap: 0.4375rem; line-height: 1; }
@@ -715,7 +715,7 @@
     .perf-period {
       font-size: 0.625rem;
       font-weight: 500;
-      color: var(--white-30);
+      color: var(--accent-hi);      /* Phase 10: purple caption */
       margin-top: 0.3125rem;
     }
     /* Sign-based colouring — no new colours introduced */
@@ -1081,15 +1081,13 @@
     .project-tab:hover {
       color: var(--white-70);
     }
-    /* The active project stays visible at rest — a restrained indicator that a selector
-       exists (and keeps the row height, so nothing jumps when the others appear). */
+    /* The active tab keeps its lilac colour + underline for when the row is revealed, but is
+       hidden at rest like the others (the header project name already shows the active
+       project). Tabs stay in flow (opacity only) so revealing them never shifts the layout. */
     .project-tab.active {
       color: var(--accent-hi);
       border-bottom-color: var(--accent-hi);
       font-weight: 700;
-      opacity: 1;
-      transform: none;
-      pointer-events: auto;
     }
     /* Reveal every project name on hover or keyboard focus anywhere in the row. */
     .project-tabs:hover .project-tab,
@@ -1284,14 +1282,14 @@
       font-weight: 600;
       letter-spacing: 0.0625rem;
       text-transform: uppercase;
-      color: var(--white-70);
+      color: var(--accent-hi);      /* Phase 10: purple panel title */
     }
     /* Compact legend (upper-right) — one chip per department present + Vacant. */
     .bo-legend { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; }
     .bo-leg {
       display: inline-flex; align-items: center; gap: 0.3125rem;
       font-size: 0.5625rem; font-weight: 600; letter-spacing: 0.03125rem; text-transform: uppercase;
-      color: var(--white-50);
+      color: var(--accent-hi);      /* Phase 10: purple legend label */
     }
     .bo-leg-dot { width: 0.5rem; height: 0.5rem; border-radius: 0.125rem; flex-shrink: 0; }
     .bo-leg-retail   { background: var(--accent); }
@@ -1354,7 +1352,7 @@
       font-size: 0.6875rem;
       font-weight: 600;
       line-height: 1;
-      color: var(--white-70);
+      color: var(--accent-hi);      /* Phase 10: purple building label */
       flex: 0 0 auto;
     }
     .bo-col-area {

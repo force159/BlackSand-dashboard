@@ -184,7 +184,9 @@ app.use('/api', historyRoutes.router);
 
 // ── Only the assets the dashboard actually needs (modest 1h caching) ─────────
 app.get('/page-3.svg', (req, res) => {
-  res.set('Cache-Control', 'public, max-age=3600');
+  // no-cache so an updated brand logo is picked up on the next kiosk refresh (matches how
+  // the HTML is served). It's a tiny file; revalidation cost is negligible.
+  res.set('Cache-Control', 'no-cache');
   res.sendFile(path.join(ROOT, 'page-3.svg'));
 });
 app.use('/logos', express.static(path.join(ROOT, 'logos'), {
