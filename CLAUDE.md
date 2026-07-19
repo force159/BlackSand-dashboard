@@ -2398,4 +2398,102 @@ released + `runExclusive` renew() + orchestrator fail-closed / normal), D (null-
 present), E (empty/all-null series, single-point change null, zero-lease exposure null). Wired
 into `test:history` and `npm test`. `npm run verify` — all stages green (unchanged behaviour
 elsewhere; existing 9.2B executive-summary shape assertions still pass: `latestDate`,
-`snapshotDateCount` semantics preserved). **Phase 9.3 not started.**
+`snapshotDateCount` semantics preserved).
+
+---
+
+## 40. PHASE 9.3 — HISTORICAL DASHBOARD FRONTEND INTEGRATION
+
+> **Status: complete.** A read-only **Historical Analytics** workspace in the frontend that
+> consumes the Phase 9.1/9.2 backend. The backend is the single source of truth: NO trend,
+> comparison, executive-summary or occupancy math runs in the browser — every number, delta,
+> series point and insight TEXT comes from `/api/history/*` and is rendered verbatim. The live
+> always-on board is unchanged; historical views are immutable. **Git is now the official VCS**
+> (see the workflow at the top of the Phase 9.3 spec): this phase begins the committed history.
+
+### 40.1 Where it lives (non-invasive)
+`Project Dashboard.html` only (plus tests + one backend display-text addition). The workspace is
+a **full-viewport modal overlay** (`#histOverlay`, `position:fixed`, authored in `rem` so it
+scales with `fitDashboard`), opened by a header **History** trigger (`#histTrigger`, cloned from
+the `.project-tab` design language). Its content area (`.hist-body`) is the one place a second
+internal `overflow-y:auto` scroll region is allowed (the page itself still never scrolls). Stat/
+chart cards use a new `.historical-card` added to the **secondary-card** elevation lists, so they
+stay subordinate to the live board's language. Closing returns to the untouched board.
+
+### 40.2 Six sub-views (lazy, per-view)
+`Executive Overview` (snapshot headline figures from `/snapshots/:date` + change indicators &
+verbatim insights from `/executive-summary`), `Portfolio Trends` (Chart.js **line** charts of
+`/series` for occupancy / vacant area / occupied units / unique tenants — building-count trend is
+intentionally omitted, not a captured per-project metric), `Building Analytics`
+(`/snapshots/:date/buildings` table with search/sort + per-building occupancy Δ from
+`/compare?level=building&policy=latest-vs-previous`), `Tenant Analytics` (largest tenants from
+`/snapshots/:date/tenants`, concentration/HHI from `/tenants/concentration`, movement from
+`/tenants/movements`, with rent & lease-expiry shown **unavailable + why**), `Snapshot Comparison`
+(two-date picker → backend `/compare` per project metric + `/tenants/movements`), `Data Quality`
+(`/history/status` counts + selected-summary metadata + data-availability insights).
+
+### 40.3 Snapshot controls & selection guard
+Project + snapshot selectors in the top bar; the per-project snapshot **date list is derived from
+the occupancy `/series` points** (authoritative). Snapshot options are labelled Latest / Previous /
+date. The comparison view has its own from/to selects guarded by the pure, tested
+`hValidateComparison()` — it **prevents invalid or future comparisons** (a date that is not a
+captured snapshot, `from > to`, or the same date) with a clear message, never firing a bad request.
+
+### 40.4 No frontend business logic (the core rule)
+The only client helpers are DISPLAY-only and unit-tested: `hFmtNum/hFmtArea/hFmtPct` (formatting),
+`hDelta(change, higherIsBetter)` (chooses arrow/tone from a **backend-provided** change — never
+computes it), `hStateFrom(outcome)` (maps a fetch result to loading/empty/error/unavailable/ready),
+`hValidateComparison(...)` (selection guard). Occupancy/vacancy/leased/GLA, all deltas, series,
+comparisons, movement counts, concentration/HHI and insight prose are taken straight from the API.
+
+### 40.5 Backend addition (the one necessary change)
+Insight objects previously carried only structured evidence (no prose), but the acceptance criterion
+is "executive insights rendered **exactly** as returned" with no client interpretation. So
+`insight-rules.js` now attaches a deterministic `title` + `message` to every insight — static string
+templates over already-computed evidence (a date/number/dimension), **not** a calculation and **not**
+AI. Additive; the existing insight-shape test was extended to lock non-empty `title`/`message`.
+
+### 40.6 Robustness / UX
+Every widget renders one of **loading / empty / error / unavailable / ready** — never a blank
+section (`showState` + `stateBlock`). The history client (`HIST.hGet`) mirrors the live client's
+discipline: same-origin, `cache:'no-store'`, `AbortController` 10s timeout; successful GETs are
+**cached ~60s** (dedup + no duplicate calls when re-opening a view), failures are never cached.
+Views fetch **lazily** and stale responses are ignored (guarded by current view/date). Trend charts
+follow the shared Chart.js grammar, are registered in `resizeDashboardCharts()` (rem-scale) and the
+quality controller's `applyQualityMode` (`chartAnimMs`), and are destroyed/rebuilt on demand (no
+leaks; the overlay is user-invoked, not per-frame). Untrusted (Monday-sourced) tenant/building names
+are rendered via `createElement`/`textContent` — never `innerHTML`. In **demo** (`file://`) mode
+every view shows an honest "requires the live server" state (history reads SQLite).
+
+### 40.7 Tests (offline)
+- `tests/frontend/phase9-3-historical.test.js` (**6**): display-helper formatting, `hDelta`
+  tone/arrow/unavailable, `hStateFrom` state mapping, `hValidateComparison` selection guard, the
+  `HIST` controller surface, and the overlay/6-view/trigger markup + single-scroll-region invariant.
+- `tests/history/phase9-3-api-integration.test.js` (**9**): drives the exact endpoints the UI calls
+  against a real in-process app with two seeded snapshots — series (selector source), executive
+  summary (scoped context + insight `title`/`message`), snapshot headline, buildings + building
+  compare, largest tenants / portfolio / concentration / movement / lease-exposure-unavailable,
+  project-metric compare, status counts, **empty-history 404**, **invalid-range 400**, and
+  no-writes-from-GET.
+- Aggregate `npm test` now: seed 28, api 11, frontend **71**, monday 49, history **109** → **268**
+  offline tests, all green. `npm run verify` — all stages green.
+
+### 40.8 Manual verification (headless Edge + CDP, real data)
+On a **disposable copy** of the live DB (the real DB was never touched; automation disabled), the
+served dashboard loaded with **zero console errors/exceptions**; the History trigger opened the
+overlay (6 tabs); the Executive Overview rendered real backend figures (Business Address 57.1%
+occupancy, 5 buildings, insight "Occupancy below target — Occupancy is 57.1%…") verbatim; and the
+page body did not scroll. All UI endpoints returned 200 except `movements` → 400 for a project with
+a single captured snapshot (the documented `INSUFFICIENT_HISTORY` case → the UI shows an "unavailable
+— at least two snapshots needed" state, never a blank).
+
+### 40.9 Limitations / deferred
+- Trends cover the captured per-project metrics; a **building-count** time series is not a captured
+  metric and is omitted (per-building history lives in Building Analytics).
+- Rent concentration and lease-expiry exposure remain **unavailable** (not in the source) and are
+  shown with the reason — unchanged from 9.2B.
+- Tenant movement stays **low-confidence** (normalized-name identity); renames are not inferred.
+- Full history requires the live server + captured snapshots; `file://` demo shows the honest
+  "live server required" state.
+- On-hardware TV validation of the overlay was not performed (no device); it reuses the quality
+  controller's `chartAnimMs` gate, so `static` mode yields instant charts.
