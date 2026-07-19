@@ -1,0 +1,60 @@
+{
+  "_comment": "TEMPLATE ONLY. Copy to config/monday-mapping.json (gitignored) and, in Phase 7, replace every <...> placeholder with real Monday BOARD IDs and COLUMN IDs. These are placeholders, not real IDs, and imply no data. `id` must be the stable Monday COLUMN ID (never the display title). Run `npm run monday:mapping:check` (production, rejects placeholders) or `:draft` (offline, allows placeholders).",
+  "version": 1,
+  "boards": {
+    "<business-address-board-id>": {
+      "enabled": true,
+      "required": true,
+      "projectSlug": "business-address",
+      "projectName": "Business Address",
+      "address": "1200 Business Boulevard, Financial District",
+      "itemGrain": "lease",
+      "buildingSource": "manual",
+      "categories": [
+        { "code": "retail", "label": "Retail", "occupancySource": "leases", "totalArea": 1892 },
+        { "code": "office", "label": "Offices", "occupancySource": "leases", "totalArea": 11267 }
+      ],
+      "statusMap": {
+        "Active": "active", "Signed": "active",
+        "Future": "future", "Cancelled": "cancelled", "Terminated": "terminated", "Expired": "expired", "Draft": "draft"
+      },
+      "columns": {
+        "tenantName": { "id": "<tenant-name-column-id>", "type": "text" },
+        "category":   { "id": "<category-column-id>",    "type": "status", "map": { "Retail": "retail", "Restaurant": "retail", "Offices": "office" } },
+        "tenantType": { "id": "<tenant-type-column-id>", "type": "text" },
+        "area":       { "id": "<area-column-id>",        "type": "numbers" },
+        "leaseDate":  { "id": "<lease-date-column-id>",  "type": "date" },
+        "status":     { "id": "<status-column-id>",      "type": "status" },
+        "building":   { "id": "<building-column-id>",    "type": "text", "optional": true },
+        "logo":       { "id": "<logo-column-id>",        "type": "files", "optional": true }
+      },
+      "safety": { "allowEmpty": false, "minAcceptedRecords": 1, "maxRecordDropPercent": 50 }
+    },
+    "<town-center-board-id>": {
+      "enabled": true,
+      "required": true,
+      "projectSlug": "town-center",
+      "projectName": "Town Center",
+      "address": "Town Center, Commercial District",
+      "itemGrain": "lease",
+      "buildingSource": "manual",
+      "categories": [
+        { "code": "retail", "label": "Commercial", "occupancySource": "explicit_percentage", "explicitLeasedPct": 0.40, "totalArea": 14850 },
+        { "code": "office", "label": "Offices",    "occupancySource": "explicit_percentage", "explicitLeasedPct": 0.69, "totalArea": 9132 }
+      ],
+      "statusMap": {
+        "Active": "active", "Signed": "active",
+        "Future": "future", "Cancelled": "cancelled", "Terminated": "terminated", "Expired": "expired", "Draft": "draft"
+      },
+      "columns": {
+        "tenantName": { "id": "<tenant-name-column-id>", "type": "text" },
+        "category":   { "id": "<category-column-id>",    "type": "status", "map": { "Commercial": "retail", "Offices": "office" } },
+        "tenantType": { "id": "<tenant-type-column-id>", "type": "text" },
+        "area":       { "id": "<area-column-id>",        "type": "numbers" },
+        "leaseDate":  { "id": "<lease-date-column-id>",  "type": "date" },
+        "status":     { "id": "<status-column-id>",      "type": "status" }
+      },
+      "safety": { "allowEmpty": false, "minAcceptedRecords": 1, "maxRecordDropPercent": 50 }
+    }
+  }
+}
