@@ -41,6 +41,7 @@
       --grey:      #7C868E;   /* Pantone 430 C (neutral) */
       --grey-lo:   #B2B5B9;   /* Pantone 4274 C */
       --coral:     #EA6753;   /* Pantone 7416 C — semantic negative / vacancy only */
+      --positive:  #2CC55E;   /* Phase 10: semantic positive / increase (green) */
 
       --white:     #FFFFFF;
       --white-70:  #d8d6dc;   /* Light neutral grey (warm-neutral, not slate) */
@@ -402,9 +403,9 @@
       font-variant-numeric: tabular-nums;
     }
     .pstat-label {
-      font-size: 0.5625rem;
+      font-size: 0.59375rem;        /* Phase 10: +0.03125rem */
       font-weight: 600;
-      color: var(--white-30);
+      color: var(--accent-hi);      /* Phase 10: purple KPI label */
       text-transform: uppercase;
       letter-spacing: 0.0625rem;
       margin-top: 0.375rem;
@@ -579,11 +580,11 @@
     }
 
     .card-header h2 {
-      font-size: 0.75rem;
+      font-size: 0.78125rem;        /* Phase 10: +0.03125rem */
       font-weight: 600;
       letter-spacing: 0.0625rem;
       text-transform: uppercase;
-      color: var(--white-70);
+      color: var(--accent-hi);      /* Phase 10: purple supporting title */
     }
 
     .card-body {
@@ -599,11 +600,11 @@
        with clean uppercase tracking, never UI "tags". */
     .prop-card .type-badge {
       display: inline-block;
-      font-size: 0.625rem;
+      font-size: 0.65625rem;        /* Phase 10: +0.03125rem */
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.0875rem;
-      color: var(--white-50);
+      color: var(--accent-hi);      /* Phase 10: purple supporting label */
       margin-bottom: 0.625rem;
     }
 
@@ -660,9 +661,9 @@
     /* ── Leasing Velocity (executive stats) ────────────── */
     .velocity-card { padding: 0.875rem 1rem; }
     .velocity-card .vel-label {
-      font-size: 0.5625rem;
+      font-size: 0.59375rem;        /* Phase 10: +0.03125rem */
       font-weight: 600;
-      color: var(--white-30);
+      color: var(--accent-hi);      /* Phase 10: purple supporting label */
       text-transform: uppercase;
       letter-spacing: 0.0625rem;
       margin-bottom: 0.375rem;
@@ -718,7 +719,7 @@
       margin-top: 0.3125rem;
     }
     /* Sign-based colouring — no new colours introduced */
-    .perf-up      { color: var(--accent-hi); }  /* positive → lilac (purple) */
+    .perf-up      { color: var(--positive); }    /* Phase 10: positive → green */
     .perf-down    { color: var(--coral); }       /* negative → coral */
     .perf-neutral { color: var(--white-50); }    /* flat → muted grey */
 
@@ -757,11 +758,11 @@
     }
 
     .tenant-section-label {
-      font-size: 0.625rem;
+      font-size: 0.65625rem;        /* Phase 10: +0.03125rem */
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.0625rem;
-      color: var(--white-30);
+      color: var(--accent-hi);      /* Phase 10: purple section label */
       padding: 0.75rem 0 0.375rem;
       border-bottom: 0.0625rem solid var(--hairline);
     }
@@ -773,9 +774,9 @@
     }
 
     .tenant-table thead th {
-      font-size: 0.625rem;
+      font-size: 0.65625rem;        /* Phase 10: +0.03125rem */
       font-weight: 600;
-      color: var(--white-30);
+      color: var(--accent-hi);      /* Phase 10: purple table header */
       text-transform: uppercase;
       letter-spacing: 0.0625rem;
       text-align: left;
@@ -1057,7 +1058,7 @@
     }
     .project-tab {
       font-family: inherit;
-      font-size: 0.75rem;
+      font-size: 0.78125rem;                 /* Phase 10: +0.03125rem, slightly more legible */
       font-weight: 600;
       letter-spacing: 0.0625rem;
       text-transform: uppercase;
@@ -1068,15 +1069,34 @@
       padding: 0.5rem 0.25rem;
       margin-bottom: -0.625rem; /* align with border bottom */
       cursor: pointer;
-      transition: all 0.25s ease;
+      /* Phase 10: idle-hidden project names. Inactive tabs fade out but STAY in flow
+         (opacity/transform only — never display/visibility) so revealing them causes no
+         layout shift and they remain keyboard-focusable (focus-within reveals the row).
+         pointer-events:none stops a faded tab catching a mouse click. */
+      opacity: 0;
+      transform: translateY(-0.2rem);
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease, color 0.25s ease, border-color 0.25s ease;
     }
     .project-tab:hover {
       color: var(--white-70);
     }
+    /* The active project stays visible at rest — a restrained indicator that a selector
+       exists (and keeps the row height, so nothing jumps when the others appear). */
     .project-tab.active {
       color: var(--accent-hi);
       border-bottom-color: var(--accent-hi);
       font-weight: 700;
+      opacity: 1;
+      transform: none;
+      pointer-events: auto;
+    }
+    /* Reveal every project name on hover or keyboard focus anywhere in the row. */
+    .project-tabs:hover .project-tab,
+    .project-tabs:focus-within .project-tab {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
     }
 
     /* ── Brand graphic device (footer diamond) ── */
@@ -1174,15 +1194,6 @@
         0 0.5rem 1.25rem rgba(0, 0, 0, 0.28),
         0 0.125rem 0.25rem rgba(0, 0, 0, 0.38);
     }
-    .plaque-rank {
-      position: absolute;
-      top: 0.5rem;
-      right: 0.75rem;
-      font-size: 1.125rem;
-      font-weight: 700;
-      color: rgba(185, 166, 217, 0.12);
-      line-height: 1;
-    }
     .plaque-initials {
       width: 3.25rem;
       height: 3.25rem;
@@ -1208,13 +1219,6 @@
       width: 3.25rem;
       height: 3.25rem;
       filter: drop-shadow(0 0.25rem 0.4375rem rgba(0, 0, 0, 0.62));
-    }
-    /* Flat DOM medallion logo (reduced/static modes) — fits the same 3.25rem circle. */
-    .plaque-initials .plaque-logo-img {
-      width: 82%;
-      height: 82%;
-      object-fit: contain;
-      display: block;
     }
     .plaque-info {
       flex: 1;
@@ -1302,7 +1306,7 @@
       overflow: hidden;
       display: flex;
       align-items: stretch;
-      gap: 0.625rem;
+      gap: 0.5rem;                 /* Phase 10: tightened toward the Chart.js bar rhythm */
       padding: 0.625rem 1.125rem 0.5625rem;
     }
     .bo-col {
@@ -2216,10 +2220,6 @@
         .map(v => ({ name: v.name, area: v.area, logo: v.logo }));
     }
 
-    function tenantInitials(name) {
-      return name.trim().split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase();
-    }
-
     /* ═══════════════════════════════════════════════════
        PORTFOLIO OCCUPANCY BY BUILDING
        One reusable, data-driven renderer over project.buildings. Percentages are
@@ -2316,7 +2316,10 @@
       medallions.forEach(m => { try { m.dispose(); } catch (e) {} });
       medallions = [];
     }
-    function createMedallion(size, initials, logo) {
+    // Phase 10: renders a single centered label (the rank digit) on the coin face. The logo
+    // path was removed — Top Tenants no longer uses tenant logos/initials — but the coin's
+    // material, lighting, rotation, and animation are unchanged.
+    function createMedallion(size, label) {
       try {
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
@@ -2351,14 +2354,14 @@
         const ring = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.06, 14, 56), ringMat);
         ring.position.z = 0.2;
 
-        // Initials rendered to a canvas texture — the default front face and the
-        // fallback whenever a tenant has no logo (or the logo can't be used).
+        // Rank digit rendered to a canvas texture — the coin's front face (same type
+        // treatment / colour / size that the tenant initials previously used).
         const tc = document.createElement('canvas'); tc.width = tc.height = 256;
         const g = tc.getContext('2d');
         g.fillStyle = '#efeaf6';
         g.font = '700 132px "Hanken Grotesk", Arial, sans-serif';
         g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.fillText(initials, 128, 140);
+        g.fillText(label, 128, 140);
         const tex = new THREE.CanvasTexture(tc); tex.anisotropy = 4;
         // depthTest:false forces the face to draw ON TOP of the coin (the coin's
         // beveled front was occluding it). Circular face → no square corners.
@@ -2369,52 +2372,25 @@
         face.position.z = 0.22;
         face.renderOrder = 10;
 
-        // Reusable logo support: load the tenant logo and show it on the coin
-        // face, as-is. Initials remain only if the image fails to load.
-        let logoTex = null;
-        if (logo) {
-          new THREE.TextureLoader().load(
-            logo,
-            (rawTex) => {
-              rawTex.colorSpace = THREE.SRGBColorSpace;
-              rawTex.anisotropy = 4;
-              logoTex = rawTex;
-              faceMat.map = rawTex;
-              faceMat.needsUpdate = true;
-            },
-            undefined,
-            () => { console.warn('Tenant logo failed to load:', logo); /* keep initials */ }
-          );
-        }
-
         const group = new THREE.Group();
         group.add(coin); group.add(ring); group.add(face);
         scene.add(group);
 
-        let raf, logoReverted = false;
+        let raf;
         (function animate() {
           raf = requestAnimationFrame(animate);
           if (document.hidden) return;
           const t = Date.now() * 0.001;
           group.rotation.y = Math.sin(t * 0.6) * 0.5;   // gentle ±28° tilt
           group.rotation.x = Math.sin(t * 0.4) * 0.14;
-          try {
-            renderer.render(scene, camera);
-          } catch (err) {
-            // A logo texture that can't be uploaded (e.g. a cross-origin local
-            // file) throws here — revert to initials once and keep rendering.
-            if (!logoReverted && faceMat.map !== tex) {
-              logoReverted = true;
-              faceMat.map = tex; faceMat.needsUpdate = true;
-            }
-          }
+          try { renderer.render(scene, camera); } catch (err) { /* defensive: never throw from the loop */ }
         })();
 
         return {
           domElement: renderer.domElement,
           dispose() {
             cancelAnimationFrame(raf);
-            tex.dispose(); if (logoTex) logoTex.dispose();
+            tex.dispose();
             if (medEnv) medEnv.dispose();
             coinGeo.dispose(); coinMat.dispose();
             ringMat.dispose(); faceMat.dispose(); renderer.dispose();
@@ -2429,16 +2405,17 @@
       const grid = document.getElementById('topTenantsGrid');
       if (!grid) return;
       disposeMedallions();
-      // Tenant name/logo are UNTRUSTED (Monday) → build the DOM (textContent + setAttribute),
-      // never string-interpolated innerHTML. Markup/classes are identical to before.
+      // Tenant name is UNTRUSTED (Monday) → built via textContent, never innerHTML.
+      // Phase 10: the medallion is now the ONLY rank indicator — it shows just the rank
+      // digit (1/2/3). No separate rank text, no tenant logo, no initials. The rank is the
+      // rendered list position (index + 1), so it stays correct if the ranking changes.
       grid.innerHTML = '';
       top3.forEach((t, i) => {
+        const rankDigit = String(i + 1);
         const plaque = document.createElement('div'); plaque.className = 'tenant-plaque';
         const inner = document.createElement('div'); inner.className = 'tenant-plaque-inner';
-        const rank = document.createElement('div'); rank.className = 'plaque-rank'; rank.textContent = '#' + (i + 1);
-        const initials = document.createElement('div'); initials.className = 'plaque-initials';
-        initials.setAttribute('data-initials', tenantInitials(t.name));
-        initials.setAttribute('data-logo', t.logo || '');
+        const medallion = document.createElement('div'); medallion.className = 'plaque-initials';
+        medallion.setAttribute('data-rank', rankDigit);
         const info = document.createElement('div'); info.className = 'plaque-info';
         const name = document.createElement('div'); name.className = 'plaque-name'; name.textContent = t.name;
         const area = document.createElement('div'); area.className = 'plaque-area';
@@ -2446,31 +2423,20 @@
         const unit = document.createElement('span'); unit.className = 'kpi-unit'; unit.textContent = 'm²';
         area.appendChild(unit);
         info.appendChild(name); info.appendChild(area);
-        inner.appendChild(rank); inner.appendChild(initials); inner.appendChild(info);
+        inner.appendChild(medallion); inner.appendChild(info);
         plaque.appendChild(inner); grid.appendChild(plaque);
       });
-      // Medallion rendering is quality-driven: FULL uses a per-tenant WebGL coin;
-      // REDUCED/STATIC use a flat DOM medallion (logo image if available, else initials)
-      // — same visible size/content, zero extra WebGL contexts/loops on weak devices.
+      // Quality-driven, content unchanged: FULL → per-tenant WebGL coin with the rank digit;
+      // REDUCED/STATIC (or no WebGL) → the SAME flat DOM circle with the digit centered.
+      // Never falls back to a logo, initials, or a blank circle.
       const webglMedallions = QUALITY.medallionMode === 'webgl' && typeof THREE !== 'undefined';
       grid.querySelectorAll('.plaque-initials').forEach(el => {
-        const initials = el.getAttribute('data-initials') || '';
-        const logo = el.getAttribute('data-logo') || '';
+        const rankDigit = el.getAttribute('data-rank') || '';
         if (webglMedallions) {
-          const m = createMedallion(52, initials, logo);
+          const m = createMedallion(52, rankDigit);
           if (m) { el.classList.add('has-3d'); el.appendChild(m.domElement); medallions.push(m); return; }
         }
-        // Flat DOM fallback: logo <img> (initials on error) or initials text.
-        if (logo) {
-          const img = document.createElement('img');
-          img.className = 'plaque-logo-img';
-          img.alt = ''; img.setAttribute('aria-hidden', 'true');
-          img.addEventListener('error', () => { img.remove(); el.textContent = initials; });
-          img.src = logo;
-          el.textContent = ''; el.appendChild(img);
-        } else {
-          el.textContent = initials;
-        }
+        el.textContent = rankDigit;   // flat fallback: digit centered in the existing circle
       });
     }
 
@@ -3060,7 +3026,11 @@
           hoverBackgroundColor: ['#c9bce4', '#9a7cc0'],
           borderWidth: 0,
           borderRadius: 3,
-          barThickness: 18,
+          // Phase 10: shared ratio-based spacing (consistent gap rhythm across bar charts;
+          // maxBarThickness caps this 2-category chart so its bars aren't over-thick).
+          categoryPercentage: 0.72,
+          barPercentage: 0.8,
+          maxBarThickness: 22,
         }]
       },
       options: {
@@ -3115,7 +3085,10 @@
           backgroundColor: bt0.labels.map((_, i) => TYPE_COLORS[i % TYPE_COLORS.length]),
           borderWidth: 0,
           borderRadius: 3,
-          barThickness: 14,
+          // Phase 10: same shared ratio-based spacing as the Leased-Area chart.
+          categoryPercentage: 0.72,
+          barPercentage: 0.8,
+          maxBarThickness: 22,
         }]
       },
       options: {

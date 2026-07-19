@@ -78,7 +78,7 @@ function loadClient(protocol) {
     fetch: async () => { throw new Error('x'); }, Chart: undefined, THREE: undefined, requestAnimationFrame: win.requestAnimationFrame,
   };
   win.window = win; ctx.globalThis = ctx; vm.createContext(ctx);
-  const EPILOGUE = ';globalThis.__P={computeMetrics,sumAreas,computeTopTenants,renderTopTenants,leasedAreaByType,renderPerformanceSummary,tenantInitials,DASHBOARD_MODE_INITIAL};';
+  const EPILOGUE = ';globalThis.__P={computeMetrics,sumAreas,computeTopTenants,renderTopTenants,leasedAreaByType,renderPerformanceSummary,DASHBOARD_MODE_INITIAL};';
   vm.runInContext(DEFS + EPILOGUE, ctx, { filename: 'p8.js' });
   return { P: ctx.__P, byId };
 }
@@ -113,18 +113,21 @@ test('Top Tenants: distinct names are NOT merged; finite-area guard', () => {
   assert.strictEqual(top.find(t => t.name === 'B').area, 0); // invalid area contributes 0, no NaN
 });
 
-test('Top Tenants: malicious HTML-like name renders as TEXT (no parsed nodes)', () => {
+test('Top Tenants: malicious HTML-like name renders as TEXT; medallion carries only the rank digit (Phase 10)', () => {
   const { P, byId } = loadClient();
   const evil = '<img src=x onerror=alert(1)>';
-  P.renderTopTenants(proj([{ name: evil, type: 'R', area: 99 }], []));
+  P.renderTopTenants(proj([{ name: evil, type: 'R', area: 99, logo: 'logos/evil.png' }], []));
   const grid = byId['topTenantsGrid'];
   const nameEl = findByClass(grid, 'plaque-name');
   assert.ok(nameEl, 'plaque-name rendered');
   assert.strictEqual(nameEl.textContent, evil, 'name inserted verbatim as text');
   assert.strictEqual(nameEl.children.length, 0, 'no child elements parsed from the name');
-  // logo is set as an attribute value, never interpolated into markup
-  const init = findByClass(grid, 'plaque-initials');
-  assert.ok(init && init.getAttribute('data-logo') === '');
+  // Phase 10: the medallion holds ONLY the rank digit — no logo, no initials.
+  const med = findByClass(grid, 'plaque-initials');
+  assert.ok(med, 'medallion element rendered');
+  assert.strictEqual(med.getAttribute('data-rank'), '1', 'rank digit from list position');
+  assert.strictEqual(med.getAttribute('data-logo'), null, 'no tenant logo attribute');
+  assert.strictEqual(med.getAttribute('data-initials'), null, 'no initials attribute');
 });
 
 // ── Occupancy breakdown by tenant TYPE ──
