@@ -192,6 +192,11 @@ app.get('/page-3.svg', (req, res) => {
 app.use('/logos', express.static(path.join(ROOT, 'logos'), {
   dotfiles: 'ignore', index: false, maxAge: '1h',
 }));
+// Phase 10.1 (§11): vendored front-end libraries (Chart.js UMD + Three.js ESM) so the kiosk
+// renders without an external CDN. Static, read-only, public assets only.
+app.use('/assets', express.static(path.join(ROOT, 'assets'), {
+  dotfiles: 'ignore', index: false, maxAge: '1h',
+}));
 
 // Favicon: browsers auto-request /favicon.ico; answer 204 so it isn't a console 404.
 app.get('/favicon.ico', (req, res) => res.status(204).end());
