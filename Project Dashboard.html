@@ -885,91 +885,26 @@
     .delay-5 { animation-delay: 0.25s; }
 
     /* ══════════════════════════════════════════════════════
-       PANEL FLOAT (restored) — each OUTER text panel drifts slowly as ONE RIGID
-       OBJECT. Everything inside (numbers, labels, charts, icons, rows, search) rides
-       along because the whole container moves; nothing inside animates on its own.
-       The motion is the independent `translate` property, so it COMPOSES with the
-       one-shot fadeInUp entrance (different property) and never rotates/scales text —
-       no wrappers or perspective needed. Amplitudes are in `rem` so the drift scales
-       with the rem-native design exactly as it did before the sharpness fix; the
-       durations / negative delays / phase offsets are the original staggered values.
-       Crucially there is NO whole-dashboard transform scale (sizing is native rem via
-       the root font-size) — so text renders crisply; only the local panel translates.
-       GPU-composited (will-change), paused when the tab is hidden, disabled under
-       reduced-motion. The 3D occupancy hero keeps its own JS animation on top. */
-    @keyframes panelFloat {
-      0%, 100% { translate: 0 0; }
-      50%      { translate: var(--fx, 0) var(--fy, -0.3125rem); }
+       PANEL ENTRANCE (Phase 10.2 sharpness) — text panels play ONLY the one-shot
+       fadeInUp entrance, then sit perfectly still. The previous continuous `panelFloat`
+       drift + permanent `will-change: transform` were REMOVED: on an always-on TV they
+       kept every text panel on a GPU compositor layer at fractional sub-pixel offsets,
+       which SOFTENED the text and made Retail and Offices render slightly differently
+       (measured: retail translate 0/-0.9px vs offices 0.04/-0.21px). With no perpetual
+       transform the panels are pixel-aligned and crisp in EVERY quality mode; ambient
+       motion still comes from the particle-wave + the 3D occupancy model, and the
+       project-switch cross-fade + entrances are unchanged. */
+    .pf-retail, .pf-offices {
+      animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.05s forwards;
     }
-    .pf-retail, .pf-offices, .pf-occ, .pf-stats, .pf-velocity, .pf-perf,
-    .pf-breakdown, .pf-leased, .pf-directory, .pf-tenants, .pf-buildings {
-      will-change: transform;
-    }
-    /* Retail / Offices / Top Tenants / Buildings also run the one-shot fadeInUp
-       entrance, declared together with the float (transform vs translate → no clash). */
-    .pf-retail {
-      --fy: -0.3125rem; --fx: 0;
-      animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.05s forwards,
-                 panelFloat 3.75s ease-in-out infinite;
-    }
-    .pf-offices {
-      --fy: -0.375rem; --fx: 0.0625rem;
-      animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.05s forwards,
-                 panelFloat 4.5s ease-in-out -1s infinite;
-    }
-    .pf-tenants {
-      --fy: -0.25rem; --fx: 0;
-      animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.20s forwards,
-                 panelFloat 4.6s ease-in-out -1.4s infinite;
-    }
-    .pf-buildings {
-      --fy: -0.25rem; --fx: 0;
-      animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.25s forwards,
-                 panelFloat 4.9s ease-in-out -2.3s infinite;
-    }
-    /* The remaining panels appear via their wrapper's entrance, so the float is their
-       only animation (original staggered durations + negative delays). */
-    .pf-occ       { --fy: -0.25rem;    --fx: 0;          animation: panelFloat 5.25s ease-in-out -1.5s  infinite; }
-    .pf-stats     { --fy: -0.25rem;    --fx: 0;          animation: panelFloat 4.25s ease-in-out -0.75s infinite; }
-    .pf-velocity  { --fy: -0.3125rem;  --fx: 0;          animation: panelFloat 3.5s  ease-in-out -1.25s infinite; }
-    .pf-perf      { --fy: -0.28125rem; --fx: 0;          animation: panelFloat 4.75s ease-in-out -2s    infinite; }
-    .pf-breakdown { --fy: -0.3125rem;  --fx: -0.0625rem; animation: panelFloat 4s    ease-in-out -0.5s  infinite; }
-    .pf-leased    { --fy: -0.375rem;   --fx: 0.0625rem;  animation: panelFloat 5s    ease-in-out -1.75s infinite; }
-    .pf-directory { --fy: -0.3125rem;  --fx: 0;          animation: panelFloat 5.5s  ease-in-out -2.5s  infinite; }
+    .pf-tenants   { animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.20s forwards; }
+    .pf-buildings { animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.25s forwards; }
+    /* .pf-occ / .pf-stats / .pf-velocity / .pf-perf / .pf-breakdown / .pf-leased /
+       .pf-directory appear via their wrapper's .animate-in entrance — no own animation.
+       (The former panel-float, its keyframes, the tab-hidden pause and the per-quality
+       float-disable rules were removed with the float itself.) */
 
-    /* Pause the float while the tab is hidden (Page Visibility → body.anim-paused). */
-    body.anim-paused .pf-retail, body.anim-paused .pf-offices,
-    body.anim-paused .pf-occ, body.anim-paused .pf-stats,
-    body.anim-paused .pf-velocity, body.anim-paused .pf-perf,
-    body.anim-paused .pf-breakdown, body.anim-paused .pf-leased,
-    body.anim-paused .pf-directory, body.anim-paused .pf-tenants,
-    body.anim-paused .pf-buildings {
-      animation-play-state: paused;
-    }
-
-    /* Adaptive quality (Phase 8.5): reduced/static modes disable the continuous panel
-       float (the only always-on CSS motion). Cards stay fully visible + in place — same
-       layout, just no perpetual motion. Mirrors the reduced-motion treatment. */
-    html[data-quality="reduced"] .pf-retail, html[data-quality="reduced"] .pf-offices,
-    html[data-quality="reduced"] .pf-occ, html[data-quality="reduced"] .pf-stats,
-    html[data-quality="reduced"] .pf-velocity, html[data-quality="reduced"] .pf-perf,
-    html[data-quality="reduced"] .pf-breakdown, html[data-quality="reduced"] .pf-leased,
-    html[data-quality="reduced"] .pf-directory, html[data-quality="reduced"] .pf-tenants,
-    html[data-quality="reduced"] .pf-buildings,
-    html[data-quality="static"] .pf-retail, html[data-quality="static"] .pf-offices,
-    html[data-quality="static"] .pf-occ, html[data-quality="static"] .pf-stats,
-    html[data-quality="static"] .pf-velocity, html[data-quality="static"] .pf-perf,
-    html[data-quality="static"] .pf-breakdown, html[data-quality="static"] .pf-leased,
-    html[data-quality="static"] .pf-directory, html[data-quality="static"] .pf-tenants,
-    html[data-quality="static"] .pf-buildings {
-      animation: none !important;
-      opacity: 1 !important;
-      transform: none !important;
-      translate: none !important;
-      will-change: auto;
-    }
-
-    /* Reduced motion: no float/entrance transforms at all — everything static + visible. */
+    /* Reduced motion: no entrance transforms at all — everything static + visible. */
     @media (prefers-reduced-motion: reduce) {
       .animate-in,
       .pf-retail, .pf-offices, .pf-occ, .pf-stats, .pf-velocity, .pf-perf,

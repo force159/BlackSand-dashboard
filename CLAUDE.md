@@ -2723,3 +2723,44 @@ scrollbars and correct scaling at 1920×1080, 2560×1440 and 3840×2160. Semanti
 (green/coral/grey) preserved; the main KPI value never turns green. No overscan hacks added.
 Regression: 282 tests, `verify`, `lint` all green; headless (live) render shows kiosk=reduced,
 charts + occupancy model + rank medallions, neutral label hierarchy, zero console errors.
+
+---
+
+## 44. PHASE 10.2 — FINAL TV SHARPNESS (PANEL-FLOAT REMOVAL)
+
+> **Status: complete.** A targeted sharpness fix — no layout/structure/KPI/backend/API/
+> Monday/historical/data/scaling/Three.js change. Only `Project Dashboard.html` (CSS) touched.
+
+### 44.1 Root cause of the soft text (measured, not assumed)
+Headless `getComputedStyle`/`getBoundingClientRect` of the Retail vs Offices cards in **full**
+mode showed both panels **GPU-promoted** (`will-change: transform`) and sitting on **different
+fractional sub-pixel** offsets from the continuous `panelFloat` drift (retail `translate:
+0 -0.895px`, offices `0.036px -0.213px`). Text rasterised off a permanently-promoted layer at
+non-integer positions renders **soft**, and because the two cards floated with different
+amplitudes/phase they rendered **differently**. In reduced mode (already un-promoted) both were
+crisp — confirming the perpetual float, not font size, was the cause.
+
+### 44.2 Fix
+Removed the continuous `panelFloat` animation, its `@keyframes`, the permanent
+`will-change: transform`, the tab-hidden pause rule and the per-quality float-disable rules.
+Text panels now play **only** the one-shot `fadeInUp` entrance and then sit still. Result
+(measured, full AND reduced): Retail and Offices are **identical** — `will-change:auto`,
+`translate:none`, integer `top` (no fractional positioning), entrance-only — so text is
+pixel-aligned and crisp in every quality mode. Ambient motion still comes from the
+particle-wave and the 3D occupancy model; the project-switch cross-fade and entrances are
+unchanged. (The `panelMotion` quality-config field is now vestigial; the `body.anim-paused`
+toggle is a harmless no-op.)
+
+### 44.3 Already delivered in 10.1 (unchanged here)
+TV typography (≥11px operational text), neutral colour hierarchy with purple reserved for
+titles/accents/selection, brighter greys + stronger borders, larger/brighter Chart.js labels,
+kiosk-default reduced quality, and local Chart.js/Three.js. Font-before-charts is handled by
+the existing `document.fonts.ready → resizeDashboardCharts()` re-measure.
+
+### 44.4 Verified
+Retail == Offices (identical computed style + integer position, both modes); no fractional
+positioning; 3D occupancy + rank medallions still render; project switching, charts, historical
+analytics, tenant rankings intact; 282 offline tests + `verify` + `lint` green; headless render
+0 console errors; no layout or backend change. **Limitation:** the one-shot entrance leaves an
+identity `transform: translateY(0)` (a no-op — pixel-aligned, not a softness source); the TV
+must still be set to 1:1/Just-Scan to avoid hardware overscan softening (documented, not code).
