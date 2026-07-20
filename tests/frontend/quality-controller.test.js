@@ -110,10 +110,10 @@ test('7 manual URL override takes precedence over stored preference', () => {
   assert.strictEqual(Q.performanceProfile.resolvedMode, 'static');
   assert.strictEqual(Q.performanceProfile.requested, 'static');
 });
-test('8 stale localStorage preference is ignored (re-probe from reduced)', () => {
+test('8 stale non-manual preference falls back to the kiosk default (reduced, no probe)', () => {
   const Q = load({ store: { v: 1, mode: 'full', source: 'startup-benchmark', at: Date.now() - 30 * 24 * 3600 * 1000 } });
-  assert.strictEqual(Q.performanceProfile.resolvedMode, 'reduced'); // stale → conservative + probe
-  assert.strictEqual(Q.shouldProbe, true);
+  assert.strictEqual(Q.performanceProfile.resolvedMode, 'reduced'); // Phase 10.1: kiosk default
+  assert.strictEqual(Q.shouldProbe, false);                          // no auto-upgrade probe
 });
 
 /* ── Phase 8.5 persistence-fix: source-aware resolution (regression fix) ── */
@@ -130,46 +130,48 @@ test('persist-fix: stored manual full → respected, no benchmark', () => {
   assert.strictEqual(Q.performanceProfile.reason, 'manual-preference');
   assert.strictEqual(Q.shouldProbe, false);
 });
-// (4) THE REGRESSION: stored runtime-monitor static → initial state only, benchmark RUNS.
-test('persist-fix: stored runtime-monitor static → benchmark RUNS (not pinned static)', () => {
+// Phase 10.1 (§6): a stored non-manual STATIC (protective downgrade) is preserved; the auto
+// upgrade probe never runs on a kiosk.
+test('persist-fix: stored runtime-monitor static → kept static, no probe', () => {
   const Q = load({ store: { v: 1, mode: 'static', source: 'runtime-monitor', at: Date.now() } });
-  assert.strictEqual(Q.performanceProfile.initialResolvedMode, 'static'); // used as initial state
-  assert.strictEqual(Q.performanceProfile.reason, 'stored-runtime-monitor-initial');
-  assert.strictEqual(Q.shouldProbe, true); // <-- benchmark NOT skipped (the fix)
+  assert.strictEqual(Q.performanceProfile.resolvedMode, 'static');
+  assert.strictEqual(Q.performanceProfile.reason, 'stored-static-initial');
+  assert.strictEqual(Q.shouldProbe, false);
 });
-// (5) Stored runtime-monitor reduced → initial reduced, benchmark RUNS.
-test('persist-fix: stored runtime-monitor reduced → benchmark RUNS', () => {
+// A stored non-manual REDUCED collapses to the kiosk default (reduced), no probe.
+test('persist-fix: stored runtime-monitor reduced → kiosk default reduced, no probe', () => {
   const Q = load({ store: { v: 1, mode: 'reduced', source: 'runtime-monitor', at: Date.now() } });
-  assert.strictEqual(Q.performanceProfile.initialResolvedMode, 'reduced');
-  assert.strictEqual(Q.shouldProbe, true);
+  assert.strictEqual(Q.performanceProfile.resolvedMode, 'reduced');
+  assert.strictEqual(Q.shouldProbe, false);
 });
-// probe-poor static is likewise non-durable → benchmark RUNS.
-test('persist-fix: stored probe-poor static → benchmark RUNS', () => {
+test('persist-fix: stored probe-poor static → kept static, no probe', () => {
   const Q = load({ store: { v: 1, mode: 'static', source: 'probe-poor', at: Date.now() } });
-  assert.strictEqual(Q.performanceProfile.initialResolvedMode, 'static');
-  assert.strictEqual(Q.shouldProbe, true);
+  assert.strictEqual(Q.performanceProfile.resolvedMode, 'static');
+  assert.strictEqual(Q.shouldProbe, false);
 });
-// (6) Stored startup-benchmark full → initial full, benchmark re-runs (re-verify).
-test('persist-fix: stored startup-benchmark full → initial full + re-benchmark', () => {
+// KEY Phase 10.1 change: a stored startup-benchmark 'full' is NOT auto-resurrected on a kiosk.
+test('persist-fix: stored startup-benchmark full → kiosk default reduced (never auto-full)', () => {
   const Q = load({ store: { v: 1, mode: 'full', source: 'startup-benchmark', at: Date.now() } });
-  assert.strictEqual(Q.performanceProfile.initialResolvedMode, 'full');
-  assert.strictEqual(Q.performanceProfile.reason, 'stored-startup-benchmark-initial');
-  assert.strictEqual(Q.shouldProbe, true);
+  assert.strictEqual(Q.performanceProfile.resolvedMode, 'reduced');
+  assert.strictEqual(Q.performanceProfile.reason, 'kiosk-default');
+  assert.strictEqual(Q.shouldProbe, false);
 });
-// (9) Legacy entry (no source) → treated as non-durable, benchmark RUNS.
-test('persist-fix: legacy stored (no source) → benchmark RUNS', () => {
+// Legacy entry (no source): static preserved, no probe.
+test('persist-fix: legacy stored static (no source) → kept static, no probe', () => {
   const Q = load({ store: { v: 1, mode: 'static', at: Date.now() } });
-  assert.strictEqual(Q.performanceProfile.reason, 'stored-legacy-initial');
-  assert.strictEqual(Q.shouldProbe, true);
+  assert.strictEqual(Q.performanceProfile.resolvedMode, 'static');
+  assert.strictEqual(Q.shouldProbe, false);
 });
-// (10) No benchmark is ever skipped due to a runtime-monitor/probe-poor persisted value.
-test('persist-fix: only manual skips the benchmark', () => {
+// Auto never runs the upgrade probe (kiosk default); static is preserved, manual respected.
+test('persist-fix: auto never probes; static preserved, manual respected', () => {
   for (const src of ['runtime-monitor', 'probe-poor', 'context-loss', 'startup-benchmark', undefined]) {
     const Q = load({ store: { v: 1, mode: 'static', source: src, at: Date.now() } });
-    assert.strictEqual(Q.shouldProbe, true, 'source ' + src + ' must re-benchmark');
+    assert.strictEqual(Q.shouldProbe, false, 'source ' + src + ' must not probe (kiosk default)');
+    assert.strictEqual(Q.performanceProfile.resolvedMode, 'static', 'stored static preserved');
   }
-  const M = load({ store: { v: 1, mode: 'static', source: 'manual', at: Date.now() } });
+  const M = load({ store: { v: 1, mode: 'full', source: 'manual', at: Date.now() } });
   assert.strictEqual(M.shouldProbe, false);
+  assert.strictEqual(M.performanceProfile.reason, 'manual-preference'); // manual full still honored
 });
 // A manual URL override is persisted durably as source 'manual'.
 test('persist-fix: ?quality=static persists as source manual', () => {
@@ -178,12 +180,12 @@ test('persist-fix: ?quality=static persists as source manual', () => {
   assert.strictEqual(stored.mode, 'static');
   assert.strictEqual(stored.source, 'manual');
 });
-// Explicit ?quality=auto RESETS a stored (even runtime) preference and re-benchmarks.
-test('persist-fix: ?quality=auto clears stored preference and re-benchmarks', () => {
+// Explicit ?quality=auto RESETS a stored preference and returns to the kiosk default.
+test('persist-fix: ?quality=auto clears stored preference → kiosk default (reduced, no probe)', () => {
   const Q = load({ search: '?quality=auto', store: { v: 1, mode: 'static', source: 'runtime-monitor', at: Date.now() } });
   assert.strictEqual(Q.storedAfterRaw, null); // stored preference cleared
   assert.strictEqual(Q.performanceProfile.resolvedMode, 'reduced');
-  assert.strictEqual(Q.shouldProbe, true);
+  assert.strictEqual(Q.shouldProbe, false);
 });
 test('9 corrupt localStorage is ignored safely', () => {
   const Q = load({ store: 'corrupt' });
