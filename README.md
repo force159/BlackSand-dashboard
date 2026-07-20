@@ -50,15 +50,18 @@ CLAUDE.md                  Engineering / design source of truth
 - A **Windows PC** (host).
 - **Node.js 20 or newer** (includes `npm`; `node --watch` is used by `npm run dev`).
 - A **local network** the TVs can reach.
-- **Internet access is currently required** for external assets:
-  - Google Fonts (Hanken Grotesk),
-  - the Three.js CDN,
-  - the Chart.js CDN,
-  - and (in future) the Monday.com API.
+- **Mostly self-contained (Phase 10.1).** Chart.js and Three.js are now **vendored locally**
+  under `assets/js/` (served by the Express host at `/assets`, and loaded relatively in the
+  standalone file), so charts and the 3D visuals work **without a CDN**. The only remaining
+  external asset is **Google Fonts (Hanken Grotesk)**; if the internet is unavailable the
+  font falls back to Arial/system and everything else still renders. For a fully offline
+  kiosk, host the Hanken Grotesk `woff2` files under `assets/fonts/` and add an `@font-face`
+  (the font files are not vendored here for licensing reasons — see below). The Monday.com
+  API is used only by the gated CLI sync, never by the always-on dashboard.
 
-  If the internet/CDN is unavailable, the dashboard still loads and stays readable
-  (KPIs, tables, scaling) but the fonts fall back and the 3D/charts degrade to their
-  built-in fallbacks.
+  > **Standalone note:** over `file://`, the browser blocks ES-module loads (CORS/null
+  > origin), so the standalone demo loads Three.js from the CDN as a fallback (Chart.js is
+  > still local). The **served** kiosk (`http://…:3000`) uses the local copies for both.
 
 ---
 
@@ -644,8 +647,10 @@ integration, where the API token lives server-side (never in frontend JS).
 
 The same URL adapts visual cost to the device. Append `?quality=`:
 
-- `?quality=auto` (default) — detect + benchmark, pick full/reduced/static.
-- `?quality=full` — full visuals (particle-wave, 3D occupancy, WebGL medallions).
+- `?quality=auto` (default) — **Phase 10.1:** for the always-on TV/kiosk this now settles at
+  **reduced** (`DEFAULT_KIOSK_QUALITY`) and no longer auto-upgrades to full; the runtime
+  monitor can still drop to static on a struggling device. Full stays available on demand.
+- `?quality=full` — full visuals (particle-wave, 3D occupancy, WebGL medallions). Manual only.
 - `?quality=reduced` — lighter: fewer particles, lower pixel ratio, flat DOM medallions, no panel float.
 - `?quality=static` — no continuous WebGL (CSS background + CSS occupancy ring); best for old Smart TVs.
 

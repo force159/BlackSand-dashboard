@@ -2649,3 +2649,77 @@ DEPLOYMENT_CHECKLIST, CHANGELOG, .env.example, CLAUDE §§1–42 — complete.
 All acceptance criteria met. **v1.0.0 is ready.** The `v1.0.0` tag is prepared but was NOT
 created or pushed — per the phase instruction, stop and await explicit user approval before
 creating/pushing the release tag.
+
+---
+
+## 43. PHASE 10.1 — TV READABILITY & KIOSK OPTIMIZATION
+
+> **Status: complete.** A presentation-quality pass for continuous large-TV/kiosk display.
+> Frontend + a small server asset route only; NO data/calculation/API/Monday/snapshot/
+> historical-logic change, NO layout/1920×1080/`fitDashboard` change. `Project Dashboard.html`,
+> `server/server.js` (one static route), vendored `assets/js/`, and the quality-controller
+> test were touched. All 282 offline tests pass; `npm run verify` green.
+
+### 43.1 Design tokens (TV contrast)
+Neutral text greys brightened for real televisions — `--white-70 #d8d6dc→#E0DDE3`,
+`--white-50 #9a969f→#B2AEB8`, `--white-30 #6f6b75→#85818C` (the muted grey was too dark at
+distance). Structural lines lifted off the background — `--border #2b2833→#383440`,
+`--hairline #201e27→#2A2730` — so card boundaries read across a room while internal
+separators stay subtle. `--accent-hi #b9a6d9→#C1AEE2` (a restrained brightness bump). Added
+semantic text aliases `--text-primary/secondary/muted/subtle`. Semantic `--positive`/`--coral`
+unchanged.
+
+### 43.2 Colour hierarchy restored (purple discipline)
+Phase 10 had made nearly every label purple, which flattened the hierarchy. Purple is now
+reserved for **titles, accents and selection**: card/section titles (`.card-header h2`,
+`.vel-panel-title`, `.bo-header h2`), the occupancy %, progress fills, the active project
+tab, medallion accents. All **field labels, captions, table headers, metadata and building
+labels reverted to bright neutral greys** (`--white-70` for field labels, `--white-50` for
+minor captions): `.perf-title/.perf-period`, `.vel-panel-sub/.vel-line-label/.vel-sub`,
+`.prop-card .gla-label/.leased-label/.type-badge`, `.pstat-label`, `.tenant-table thead th`,
+`.tenant-section-label`, `.bo-leg/.bo-col-label/.bo-col-area`, `.header-updated .label/.value`.
+
+### 43.3 TV-safe typography
+Always-visible operational text raised to ≥ `0.6875rem` (11px), micro captions ≥ `0.65625rem`
+(10.5px); card/section titles → `0.75–0.8125rem` (12–13px); table headers/body 12.5–13px.
+Uppercase tracking trimmed slightly where sizes grew. No card heights changed, no wrapping,
+primary KPI hierarchy preserved. Historical-modal labels raised the same way.
+
+### 43.4 Chart.js readability
+Axis ticks & category labels 11→13px (historical trends 10→12px), tooltip title→14 / body→13,
+and the dim `#847f8c` tick colour raised to `#B2AEB8` (=`--white-50`), y-labels to `#E0DDE3`
+(=`--white-70`). Bar spacing (`categoryPercentage 0.72` / `barPercentage 0.8` /
+`maxBarThickness 22`) and all data/axes/tooltip content are unchanged.
+
+### 43.5 Kiosk quality default (§6)
+`const DEFAULT_KIOSK_QUALITY = 'reduced'`. Auto now settles at reduced (occupancy model +
+lighter particles + flat rank medallions + **no continuous panel float**) and **no longer
+runs the upgrade probe** to full; a stored auto 'full' is not resurrected; a protective
+`static` downgrade is preserved; the 60s runtime monitor can still drop reduced→static.
+`?quality=full|reduced|static|auto` overrides are unchanged, and a stored **manual** choice is
+still honoured. (quality-controller tests updated to this contract.)
+
+### 43.6 Project tabs (§7)
+Reveal on hover **and** `:focus-within` (keyboard/remote); a restrained `:focus-visible`
+outline in `--accent-hi` (never default blue); the clicked tab is blurred after switching so
+the row never stays stuck open; hidden tabs keep `pointer-events:none` (no stray clicks) and
+use opacity (not `display:none`) so they stay focusable. The active project stays visible and
+`order:-1` (pulled to the start); no layout shift.
+
+### 43.7 Local dependencies (§11)
+Chart.js 4.4.7 UMD and Three.js 0.170.0 ESM are vendored under `assets/js/` and served by the
+Express host via a new `app.use('/assets', express.static(...))`. Chart.js loads via a
+relative `<script src="assets/js/chart.umd.min.js">` (works over http + file://). Three.js
+uses a protocol-aware dynamic `import()`: `./assets/js/three.module.min.js` when served,
+falling back to the CDN over `file://` (browsers block ES-module loads from a null origin) or
+if the local file is missing — `window.THREE` + the `three-ready` handshake are unchanged.
+Verified over http: zero CDN requests, both libs 200 from `/assets`, no console errors. Fonts
+are NOT vendored (licensing) — Google Fonts with an Arial/system fallback; documented for a
+future fully-offline install.
+
+### 43.8 Preserved / verified
+`fitDashboard()` root-font scaling and the fixed 1920×1080 canvas are untouched — verified no
+scrollbars and correct scaling at 1920×1080, 2560×1440 and 3840×2160. Semantic delta colours
+(green/coral/grey) preserved; the main KPI value never turns green. No overscan hacks added.
+Regression: 282 tests, `verify`, `lint` all green; headless (live) render shows kiosk=reduced,
+charts + occupancy model + rank medallions, neutral label hierarchy, zero console errors.
